@@ -3,9 +3,9 @@
 int HttpConn::s_epollfd = -1;
 int HttpConn::s_user_cnt = 0;
 
-HttpConn::HttpConn()
+HttpConn::HttpConn():m_doc_root("./root")
 {
-
+    init();
 }
 
 HttpConn::~HttpConn()
@@ -13,8 +13,397 @@ HttpConn::~HttpConn()
 
 }
 
-void HttpConn::init(int fd,const sockaddr_in& addr)
+void HttpConn::init(int fd,const sockaddr_in& addr,int trigmode)
 {
     m_clifd = fd;
     m_addr = addr;
+    m_TRIGmode = trigmode;
+}
+
+void HttpConn::init()
+{
+    m_read_idx = 0;
+    m_checked_idx = 0;
+    m_start_line = 0;
+    m_TRIGmode = 0;
+    m_check_state = CHECK_STATE::CHECK_STATE_REQUESTLINE;
+    char* m_url = 0;
+    METHOD m_method = GET;
+    char* m_version =  0;
+    int cgi = 0;  //判断是否启用post
+    m_host = 0;
+    m_content_length = 0;
+    m_linger = false;
+    m_file_addr = 0;    
+    memset(m_real_file,0,sizeof(m_real_file));
+    memset(m_read_buf,0,sizeof(m_read_buf));
+}
+
+bool HttpConn::read_once()
+{
+    if (m_read_idx >= READ_BUFFER_SIZE-1)
+    {
+        return false;
+    }
+    int bytes_read = 0;
+
+    //ET读取数据
+    if (m_TRIGmode)
+    {
+
+    }
+    else //LT读数据
+    {
+        bytes_read = recv(m_clifd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx-1, 0);
+        m_read_idx += bytes_read;
+
+        if (bytes_read <= 0)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void HttpConn::process()
+{
+    HTTP_CODE read_ret = process_read();
+    if(read_ret == HTTP_CODE::NO_REQUEST)
+    {
+        return;
+    }
+    bool write_ret =  process_write(read_ret);
+    if(!write_ret)
+    {
+        //关闭连接
+    }
+    init();
+}
+
+char* HttpConn::get_line()
+{
+    return m_read_buf+m_start_line;
+}
+
+HttpConn::HTTP_CODE HttpConn::process_read()
+{
+    LINE_STATUS line_status = LINE_OK;
+    HTTP_CODE ret = NO_REQUEST;
+    char* text = 0;
+    while( (m_check_state==CHECK_STATE_CONTENT&&line_status==LINE_OK) || ((line_status = parse_line()) == LINE_OK) )
+    {
+        text = get_line();
+        std::cout << text<< std::endl;
+        m_start_line = m_checked_idx;
+        if(m_check_state==CHECK_STATE_REQUESTLINE)
+        {
+            ret = parse_request_line(text);
+            if(ret==BAD_REQUEST)
+                return BAD_REQUEST;
+        }
+        else if(m_check_state==CHECK_STATE_HEADER)
+        {
+            ret = parse_headers(text);
+            if(ret==BAD_REQUEST)
+                return BAD_REQUEST;
+            else if(ret==GET_REQUEST)
+                return do_request();
+        }
+        else if(m_check_state==CHECK_STATE_CONTENT)
+        {
+            ret = parse_content(text);
+            if(ret==GET_REQUEST)
+                return do_request();
+            line_status = LINE_OPEN;
+        }
+        else
+        {
+            return INTERNAL_ERROR;
+        }
+    }
+
+    return NO_REQUEST;
+}
+
+bool HttpConn::process_write(HTTP_CODE read_ret)
+{
+    return 1;
+}
+
+HttpConn::LINE_STATUS HttpConn::parse_line()
+{
+    std::cout << "解析一行" << std::endl;
+    char temp;
+    for(; m_checked_idx<m_read_idx; m_checked_idx++)
+    {
+        temp = m_read_buf[m_checked_idx];
+        if(temp=='\r')
+        {
+            //数据不完整
+            if(m_checked_idx+1==m_read_idx)
+                return LINE_OPEN;
+            else if(m_read_buf[m_checked_idx+1]=='\n')
+            {
+                m_read_buf[m_checked_idx++] = '\0';
+                m_read_buf[m_checked_idx++] = '\0';
+                return LINE_OK;
+            }
+            else
+                return LINE_BAD;
+        }
+        else if(temp=='\n')
+        {
+            if(m_checked_idx>0&&m_read_buf[m_checked_idx-1]=='\r')
+            {
+                m_read_buf[m_checked_idx-1] = '\0';
+                m_read_buf[m_checked_idx++] = '\0';
+                return LINE_OK;
+            }
+            else
+            return LINE_BAD;
+        }
+    }
+
+    return LINE_OPEN;
+}
+
+HttpConn::HTTP_CODE HttpConn::parse_request_line(char* text)
+{
+    std::cout << "解析请求行" << std::endl;
+    m_url = strpbrk(text," \t");
+    if(!m_url)
+    return BAD_REQUEST;
+    *m_url = '\0';
+    m_url++;
+    char* method = text;
+    if(strcasecmp(method,"GET")==0)
+    {
+        m_method = GET;
+    }
+    else if(strcasecmp(method,"POST")==0)
+    {
+        m_method = POST;
+        cgi = 1;
+    }
+    else
+    return BAD_REQUEST;
+    m_url += strspn(m_url," \t");
+    m_version = strpbrk(m_url," \t");
+    if(!m_version)
+        return BAD_REQUEST;
+
+    *m_version = '\0';
+    m_version++;
+    m_version += strspn(m_version," \t");
+    if(strcasecmp(m_version,"HTTP/1.1"))
+        return BAD_REQUEST;
+
+    if(strncasecmp(m_url,"http://",7)==0)
+    {
+        m_url+=7;
+        m_url = strchr(m_url,'/');
+    }
+    if(strncasecmp(m_url,"https://",8)==0)
+    {
+        m_url+=8;
+        m_url = strchr(m_url,'/');
+    }
+
+    if(!m_url||m_url[0]!='/')
+        return BAD_REQUEST;
+    
+    if(m_url[strlen(m_url)-1]=='/')
+    {
+        strcat(m_url,"index.html");
+    }
+    
+    m_check_state = CHECK_STATE_HEADER;
+    return NO_REQUEST;
+}
+
+HttpConn::HTTP_CODE HttpConn::parse_headers(char *text)
+{
+    std::cout << "解析请求头" << std::endl;
+
+    if(text[0]=='\0')
+    {
+        if(m_content_length!=0)
+        {
+            m_check_state = CHECK_STATE_CONTENT;
+            return NO_REQUEST;
+        }
+        return GET_REQUEST;
+    }
+    else if(strncasecmp(text,"Connection:",11)==0)
+    {
+        text+=11;
+        text+= strspn(text," \t");
+        if(strcasecmp(text,"keep-alive")==0)
+        {
+            m_linger = true;
+        }
+    }
+    else if(strncasecmp(text,"Content-length:",15)==0)
+    {
+        text+=15;
+        text+= strspn(text," \t");
+        m_content_length = atoll(text);
+    }
+    else if(strncasecmp(text,"Host:",5)==0)
+    {
+        text+=5;
+        text+=strspn(text," \t");
+        m_host = text;
+    }
+    else
+    {
+        //错误头，打印日志
+    }
+    return NO_REQUEST;
+}
+
+HttpConn::HTTP_CODE HttpConn::parse_content(char *text)
+{
+    std::cout << "解析内容" << std::endl;
+    if(m_read_idx>=m_content_length+m_check_state)
+    {
+        text[m_content_length] = '\0';
+        m_string = text;
+        return GET_REQUEST;
+    }
+
+    return NO_REQUEST;
+}
+
+//解析请求和路径，确认返回浏览器的状态
+HttpConn::HTTP_CODE HttpConn::do_request()
+{
+    strcpy(m_real_file,m_doc_root);
+    int len = strlen(m_doc_root);
+    //printf("m_url:%s\n", m_url);
+    const char *p = strrchr(m_url, '/');
+    /*
+    //处理cgi
+    if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))
+    {
+
+        //根据标志判断是登录检测还是注册检测
+        char flag = m_url[1];
+
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/");
+        strcat(m_url_real, m_url + 2);
+        strncpy(m_real_file + len, m_url_real, FILENAME_LEN - len - 1);
+        free(m_url_real);
+
+        //将用户名和密码提取出来
+        //user=123&passwd=123
+        char name[100], password[100];
+        int i;
+        for (i = 5; m_string[i] != '&'; ++i)
+            name[i - 5] = m_string[i];
+        name[i - 5] = '\0';
+
+        int j = 0;
+        for (i = i + 10; m_string[i] != '\0'; ++i, ++j)
+            password[j] = m_string[i];
+        password[j] = '\0';
+
+        if (*(p + 1) == '3')
+        {
+            //如果是注册，先检测数据库中是否有重名的
+            //没有重名的，进行增加数据
+            char *sql_insert = (char *)malloc(sizeof(char) * 200);
+            strcpy(sql_insert, "INSERT INTO user(username, passwd) VALUES(");
+            strcat(sql_insert, "'");
+            strcat(sql_insert, name);
+            strcat(sql_insert, "', '");
+            strcat(sql_insert, password);
+            strcat(sql_insert, "')");
+
+            if (users.find(name) == users.end())
+            {
+                m_lock.lock();
+                int res = mysql_query(mysql, sql_insert);
+                users.insert(pair<string, string>(name, password));
+                m_lock.unlock();
+
+                if (!res)
+                    strcpy(m_url, "/log.html");
+                else
+                    strcpy(m_url, "/registerError.html");
+            }
+            else
+                strcpy(m_url, "/registerError.html");
+        }
+        //如果是登录，直接判断
+        //若浏览器端输入的用户名和密码在表中可以查找到，返回1，否则返回0
+        else if (*(p + 1) == '2')
+        {
+            if (users.find(name) != users.end() && users[name] == password)
+                strcpy(m_url, "/welcome.html");
+            else
+                strcpy(m_url, "/logError.html");
+        }
+    }
+
+    if (*(p + 1) == '0')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/register.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '1')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/log.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '5')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/picture.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '6')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/video.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+
+        free(m_url_real);
+    }
+    else if (*(p + 1) == '7')
+    {
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/fans.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+
+        free(m_url_real);
+    }
+    else
+        strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
+    */
+    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
+    if (stat(m_real_file, &m_file_stat) < 0)//文件不存在
+        return NO_RESOURCE;
+
+    if(!(m_file_stat.st_mode&S_IROTH)) //权限不够
+        return FORBIDDEN_REQUEST;
+
+    if(S_ISDIR(m_file_stat.st_mode)) //错误访问文件夹
+        return BAD_REQUEST;
+
+    int fd = open(m_real_file,O_RDONLY);
+    m_file_addr = (char*)mmap(0,m_file_stat.st_size,PROT_READ,MAP_PRIVATE,fd,0);
+    close(fd);
+    std::cout << "m_url:" << m_real_file << std::endl;
+    return FILE_REQUEST;
 }

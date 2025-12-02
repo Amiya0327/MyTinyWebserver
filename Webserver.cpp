@@ -79,6 +79,7 @@ void Webserver::dealWithConn()
             return;
         }
     }
+    m_users[clientfd].init(clientfd,client,m_climode);
     m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
     HttpConn::s_user_cnt++;
     std::cout << "客户端连接" << clientfd << std::endl;
@@ -103,11 +104,11 @@ void Webserver::eventLoop()
             }
             else if (m_events[i].events & EPOLLIN) //处理客户连接上接收到的数据
             {
-                dealWithRead();
+                dealWithRead(fd);
             }
             else if (m_events[i].events & EPOLLOUT)  //处理写事件
             {
-                dealWithWrite();
+                dealWithWrite(fd);
             }
             //处理信号待补充
         }
@@ -138,7 +139,7 @@ void Webserver::TRIGmode(int mode)
     }
 }
 
-void Webserver::dealWithRead()
+void Webserver::dealWithRead(int clifd)
 {
     //边缘触发
     if(m_climode)
@@ -147,11 +148,12 @@ void Webserver::dealWithRead()
     }
     else
     {
-
+        m_users[clifd].read_once();
+        m_users[clifd].process_read();
     }
 }
 
-void Webserver::dealWithWrite()
+void Webserver::dealWithWrite(int clifd)
 {
 
 }

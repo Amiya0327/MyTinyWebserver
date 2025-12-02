@@ -32,8 +32,8 @@ public:
 private:
 
     void dealWithConn();
-    void dealWithRead();
-    void dealWithWrite();
+    void dealWithRead(int clifd);
+    void dealWithWrite(int clifd);
 
     int m_lismode;
     int m_climode;
