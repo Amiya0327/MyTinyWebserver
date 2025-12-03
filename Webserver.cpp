@@ -149,7 +149,7 @@ void Webserver::dealWithRead(int clifd)
     else
     {
         m_users[clifd].read_once();
-        m_users[clifd].process_read();
+        m_users[clifd].process();
     }
 }
 

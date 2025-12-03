@@ -217,6 +217,7 @@ bool HttpConn::process_write(HTTP_CODE read_ret)
             m_iv[1].iov_len = m_file_stat.st_size;
             m_iv_cnt = 2;
             m_bytes_to_send = m_write_idx+m_file_stat.st_size;
+            std::cout << "文件写入缓冲区成功" << std::endl;
             return true;
         }
         else
