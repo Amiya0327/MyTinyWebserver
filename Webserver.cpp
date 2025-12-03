@@ -100,7 +100,7 @@ void Webserver::eventLoop()
             }
             else if (m_events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) //服务器端关闭连接或者发生错误，移除对应的定时器
             {
-                close(fd);
+                dealWithClose(fd);
             }
             else if (m_events[i].events & EPOLLIN) //处理客户连接上接收到的数据
             {
@@ -156,4 +156,9 @@ void Webserver::dealWithRead(int clifd)
 void Webserver::dealWithWrite(int clifd)
 {
 
+}
+
+void Webserver::dealWithClose(int clifd)
+{
+    m_users[clifd].closeConn();
 }

@@ -36,3 +36,9 @@ void Utils::show_error(int fd,const char* info)
     send(fd,info,strlen(info),0);
     close(fd);
 }
+
+void Utils::removefd(int epollfd,int fd)
+{
+    epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
+    close(fd);
+}

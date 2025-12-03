@@ -2,8 +2,9 @@
 
 int HttpConn::s_epollfd = -1;
 int HttpConn::s_user_cnt = 0;
+Utils HttpConn::s_utils = Utils();
 
-HttpConn::HttpConn():m_doc_root("./root")
+HttpConn::HttpConn()
 {
     init();
 }
@@ -23,6 +24,7 @@ void HttpConn::init(int fd,const sockaddr_in& addr,int trigmode)
 void HttpConn::init()
 {
     m_read_idx = 0;
+    m_write_idx = 0;
     m_checked_idx = 0;
     m_start_line = 0;
     m_TRIGmode = 0;
@@ -34,10 +36,20 @@ void HttpConn::init()
     m_host = 0;
     m_content_length = 0;
     m_linger = false;
-    m_file_addr = 0;    
+    m_file_addr = 0;
+    m_iv_cnt = 0;
+    m_bytes_to_send = 0;
     memset(m_real_file,0,sizeof(m_real_file));
     memset(m_read_buf,0,sizeof(m_read_buf));
+    memset(m_write_buf,0,sizeof(m_write_buf));
 }
+
+void HttpConn::closeConn()
+{
+    s_utils.removefd(s_epollfd,m_clifd);
+    s_user_cnt--;
+}
+
 
 bool HttpConn::read_once()
 {
@@ -73,7 +85,7 @@ void HttpConn::process()
     {
         return;
     }
-    bool write_ret =  process_write(read_ret);
+    bool write_ret = process_write(read_ret);
     if(!write_ret)
     {
         //关闭连接
@@ -126,9 +138,120 @@ HttpConn::HTTP_CODE HttpConn::process_read()
     return NO_REQUEST;
 }
 
+bool HttpConn::add_response(const char *format, ...)
+{
+    if(m_write_idx>=WRITE_BUFFER_SIZE)
+    {
+        return false;
+    }
+    va_list args;
+    va_start(args,format);
+    int len = vsnprintf(m_write_buf,WRITE_BUFFER_SIZE-1-m_write_idx,format,args);
+    if(m_write_idx+len>=WRITE_BUFFER_SIZE)
+    {
+        va_end(args);
+        return false;
+    }
+    m_write_idx+=len;
+    va_end(args);
+
+    //打印日志
+
+    return true;
+}
+
+bool HttpConn::add_content(const char *content)
+{
+    return add_response(content);
+}
+
+bool HttpConn::add_status_line(int status, const char *title)
+{
+    return add_response("%s %d %s\r\n","HTTP/1.1",status,title);
+}
+
+bool HttpConn::add_headers(int content_length)
+{
+    return add_content_length(content_length)&&add_linger()&&add_blank_line();
+}
+
+bool HttpConn::add_content_type()
+{
+    return add_response("Content-Type:%s\r\n","text/html"); //暂时只有静态网页html
+}
+
+bool HttpConn::add_content_length(int content_length)
+{
+    return add_response("Content-Length:%d\r\n",content_length);
+}
+
+bool HttpConn::add_linger()
+{
+    return add_response("Connecion:%s\r\n",m_linger?"keep-alive":"close");
+}
+
+bool HttpConn::add_blank_line()
+{
+    return add_response("\r\n");
+}
+
+
 bool HttpConn::process_write(HTTP_CODE read_ret)
 {
-    return 1;
+    if(read_ret==HTTP_CODE::BAD_REQUEST)
+    {
+        add_status_line(404,error_404_title);
+        add_headers(strlen(error_404_form));
+        if(!add_content(error_404_form))
+            return false;
+    }
+    else if(read_ret==HTTP_CODE::FILE_REQUEST)
+    {
+        add_status_line(200,ok_200_title);
+        if(m_file_stat.st_size)
+        {
+            add_headers(m_file_stat.st_size);
+            m_iv[0].iov_base = m_write_buf;
+            m_iv[0].iov_len = m_write_idx;
+            m_iv[1].iov_base = m_file_addr;
+            m_iv[1].iov_len = m_file_stat.st_size;
+            m_iv_cnt = 2;
+            m_bytes_to_send = m_write_idx+m_file_stat.st_size;
+            return true;
+        }
+        else
+        {
+            const char* ok_string = "<html><body></body></html>";
+            add_headers(strlen(ok_string));
+            if(!add_content(ok_string))
+                return false;
+        }
+
+    }
+    else if(read_ret==HTTP_CODE::FORBIDDEN_REQUEST)
+    {
+        add_status_line(403,error_403_title);
+        add_headers(strlen(error_403_form));
+        if(!add_content(error_403_form))
+            return false;
+    }
+    else if(read_ret == HTTP_CODE::INTERNAL_ERROR)
+    {
+        add_status_line(500,error_500_title);
+        add_headers(strlen(error_500_form));
+        if(!add_content(error_500_form))
+            return false;
+    }
+    else
+    {
+        return false;
+    }
+
+    m_iv[0].iov_base = m_write_buf;
+    m_iv[0].iov_len = m_write_idx;
+    m_iv_cnt = 1;
+    m_bytes_to_send = m_write_idx;
+    return true;
 }
 
 HttpConn::LINE_STATUS HttpConn::parse_line()
@@ -279,8 +402,8 @@ HttpConn::HTTP_CODE HttpConn::parse_content(char *text)
 //解析请求和路径，确认返回浏览器的状态
 HttpConn::HTTP_CODE HttpConn::do_request()
 {
-    strcpy(m_real_file,m_doc_root);
-    int len = strlen(m_doc_root);
+    strcpy(m_real_file,doc_root);
+    int len = strlen(doc_root);
     //printf("m_url:%s\n", m_url);
     const char *p = strrchr(m_url, '/');
     /*

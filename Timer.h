@@ -19,5 +19,7 @@ public:
 
     //将内核事件表注册读事件
     void addfd(int epollfd, int fd, bool one_shot,bool TRIGmode);
+
+    void removefd(int epollfd,int fd);
 private:
 };
