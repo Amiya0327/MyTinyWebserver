@@ -76,7 +76,8 @@ public:
     void init();
     bool read_once();
     void process();
-    void write();
+    bool write();
+    void unmap();
 
     HTTP_CODE process_read();
     bool process_write(HTTP_CODE ret);
@@ -86,6 +87,7 @@ public:
     HTTP_CODE do_request();
     char *get_line();
     LINE_STATUS parse_line();
+
     void closeConn();
     bool add_response(const char *format, ...);
     bool add_content(const char *content);
@@ -105,6 +107,7 @@ private:
     struct iovec m_iv[2];
     int m_iv_cnt;
     int m_bytes_to_send;
+    int m_bytes_have_send;
     int m_clifd;
     int m_read_idx;
     int m_write_idx;

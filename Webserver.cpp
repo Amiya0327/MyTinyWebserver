@@ -155,7 +155,7 @@ void Webserver::dealWithRead(int clifd)
 
 void Webserver::dealWithWrite(int clifd)
 {
-
+    m_users[clifd].write();
 }
 
 void Webserver::dealWithClose(int clifd)

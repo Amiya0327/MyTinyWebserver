@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include<string.h>
+#include<iostream>
 
 class Utils
 {
@@ -21,5 +22,7 @@ public:
     void addfd(int epollfd, int fd, bool one_shot,bool TRIGmode);
 
     void removefd(int epollfd,int fd);
+
+    void modfd(int epollfd, int fd, int ev,bool TRIGmode);
 private:
 };

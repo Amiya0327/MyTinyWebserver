@@ -39,6 +39,9 @@ void HttpConn::init()
     m_file_addr = 0;
     m_iv_cnt = 0;
     m_bytes_to_send = 0;
+    m_host = 0;
+    m_bytes_have_send = 0;
+    cgi = 0;
     memset(m_real_file,0,sizeof(m_real_file));
     memset(m_read_buf,0,sizeof(m_read_buf));
     memset(m_write_buf,0,sizeof(m_write_buf));
@@ -83,14 +86,16 @@ void HttpConn::process()
     HTTP_CODE read_ret = process_read();
     if(read_ret == HTTP_CODE::NO_REQUEST)
     {
+        s_utils.modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
         return;
     }
     bool write_ret = process_write(read_ret);
     if(!write_ret)
     {
         //关闭连接
+        closeConn();
     }
-    init();
+    s_utils.modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
 }
 
 char* HttpConn::get_line()
@@ -146,7 +151,7 @@ bool HttpConn::add_response(const char *format, ...)
     }
     va_list args;
     va_start(args,format);
-    int len = vsnprintf(m_write_buf,WRITE_BUFFER_SIZE-1-m_write_idx,format,args);
+    int len = vsnprintf(m_write_buf+m_write_idx,WRITE_BUFFER_SIZE-1-m_write_idx,format,args);
     if(m_write_idx+len>=WRITE_BUFFER_SIZE)
     {
         va_end(args);
@@ -177,7 +182,7 @@ bool HttpConn::add_headers(int content_length)
 
 bool HttpConn::add_content_type()
 {
-    return add_response("Content-Type:%s\r\n","text/html"); //暂时只有静态网页html
+    return add_response("Content-Type: %s\r\n","text/html"); //暂时只有静态网页html
 }
 
 bool HttpConn::add_content_length(int content_length)
@@ -198,7 +203,7 @@ bool HttpConn::add_blank_line()
 
 bool HttpConn::process_write(HTTP_CODE read_ret)
 {
-    if(read_ret==HTTP_CODE::BAD_REQUEST)
+    if(read_ret==HTTP_CODE::BAD_REQUEST||read_ret==HttpConn::NO_RESOURCE)
     {
         add_status_line(404,error_404_title);
         add_headers(strlen(error_404_form));
@@ -257,7 +262,6 @@ bool HttpConn::process_write(HTTP_CODE read_ret)
 
 HttpConn::LINE_STATUS HttpConn::parse_line()
 {
-    std::cout << "解析一行" << std::endl;
     char temp;
     for(; m_checked_idx<m_read_idx; m_checked_idx++)
     {
@@ -407,6 +411,11 @@ HttpConn::HTTP_CODE HttpConn::do_request()
     int len = strlen(doc_root);
     //printf("m_url:%s\n", m_url);
     const char *p = strrchr(m_url, '/');
+
+    if(cgi==1)
+    {
+        return BAD_REQUEST;
+    }
     /*
     //处理cgi
     if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))
@@ -530,4 +539,71 @@ HttpConn::HTTP_CODE HttpConn::do_request()
     close(fd);
     std::cout << "m_url:" << m_real_file << std::endl;
     return FILE_REQUEST;
+}
+
+bool HttpConn::write()
+{
+    int temp = 0;
+
+    if(m_bytes_to_send==0)  //数据不完整，重新初始化
+    {
+        s_utils.modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
+        init();
+        return true;
+    }
+
+    while(1)
+    {
+        temp = writev(m_clifd,m_iv,m_iv_cnt);
+
+        if(temp<0)
+        {
+            if(errno==EAGAIN) //暂时无法发送,等待
+            {
+                s_utils.modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
+                return true;
+            }
+            unmap();  //其他错误，关闭map映射并关闭连接
+            return false;
+        }
+        
+        m_bytes_have_send+=temp;
+        m_bytes_to_send-=temp;
+        if(m_bytes_have_send>=m_write_idx)
+        {
+            m_iv[0].iov_len = 0;
+            m_iv[1].iov_base = m_file_addr + (m_bytes_have_send-m_write_idx);
+            m_iv[1].iov_len = m_bytes_to_send;
+        }
+        else
+        {
+            m_iv[0].iov_base = m_write_buf+m_bytes_have_send;
+            m_iv[0].iov_len = m_write_idx-m_bytes_have_send;
+        }
+
+        if(m_bytes_to_send<=0)
+        {
+            std::cout << "文件发送成功" << std::endl;
+            unmap();  //发送完成，关闭文件映射
+            if(m_linger)  //持久连接
+            {
+                s_utils.modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
+                init();   //初始化，不关闭连接
+                std::cout << "初始化完成" << std::endl;
+                return true; 
+            }
+            else
+                return false;  //关闭连接
+        }
+
+    }
+}
+
+void HttpConn::unmap()
+{
+    if(m_file_addr)
+    {
+        munmap(m_file_addr,m_file_stat.st_size);
+        m_file_addr = 0;
+    }
 }
