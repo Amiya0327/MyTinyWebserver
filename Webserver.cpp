@@ -12,11 +12,11 @@ Webserver::~Webserver()
     delete[] m_users;
 }
 
-void Webserver::init(unsigned short port,int lismode,int Climode)
+void Webserver::init(unsigned short port,int trigmode,int actor_model)
 {
     m_port = port;
-    m_lismode = lismode;
-    m_climode = Climode;
+    m_TRIGmode = trigmode;
+    m_actor_model = actor_model;
 }
 
 void Webserver::eventListen()
@@ -62,7 +62,26 @@ void Webserver::dealWithConn()
     int clientfd;
     if(m_lismode)
     {
-
+        while(1)
+        {
+            clientfd = accept(m_listenfd,(sockaddr*)&client,&len);
+            if(clientfd<0)
+            {
+                perror("accept failed");
+                return;
+            }
+            if (HttpConn::s_user_cnt >= MAX_USER_NUM) 
+            {
+                // 返回错误信息给客户端
+                m_utils.show_error(clientfd,"Server busy");
+                //LOG_WARN("Reject connection: too many users");
+                return;
+            }
+            m_users[clientfd].init(clientfd,client,m_climode);
+            m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
+            HttpConn::s_user_cnt++;
+            std::cout << "客户端连接" << clientfd << std::endl;
+        }
     }
     else
     {
@@ -78,11 +97,12 @@ void Webserver::dealWithConn()
             //LOG_WARN("Reject connection: too many users");
             return;
         }
+        m_users[clientfd].init(clientfd,client,m_climode);
+        m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
+        HttpConn::s_user_cnt++;
+        std::cout << "客户端连接" << clientfd << std::endl;
     }
-    m_users[clientfd].init(clientfd,client,m_climode);
-    m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
-    HttpConn::s_user_cnt++;
-    std::cout << "客户端连接" << clientfd << std::endl;
+
 }
 
 void Webserver::eventLoop()
@@ -115,19 +135,19 @@ void Webserver::eventLoop()
     }
 }
 
-void Webserver::TRIGmode(int mode)
+void Webserver::TRIGmode()
 {
-    if(mode==0)
+    if(m_TRIGmode==0)
     {
         m_lismode = 0;
         m_climode = 0;
     }
-    else if(mode==1)
+    else if(m_TRIGmode==1)
     {
         m_lismode = 0;
         m_climode = 1;
     }
-    else if(mode==2)
+    else if(m_TRIGmode==2)
     {
         m_lismode = 1;
         m_climode = 0;
@@ -141,24 +161,67 @@ void Webserver::TRIGmode(int mode)
 
 void Webserver::dealWithRead(int clifd)
 {
-    //边缘触发
-    if(m_climode)
+    if(m_actor_model) //reactor
     {
-        
+        ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,1));
     }
-    else
+    else  //proactor
     {
-        m_users[clifd].read_once();
-        m_users[clifd].process();
+        if(m_users[clifd].read_once())
+        {
+            ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,1));
+        }
+        else
+        {
+            m_users[clifd].closeConn();
+        }
     }
 }
 
 void Webserver::dealWithWrite(int clifd)
 {
-    m_users[clifd].write();
+    if(m_actor_model)
+    {
+        ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,0));
+    }
+    else
+    {
+        if(!m_users[clifd].write())
+            m_users[clifd].closeConn();
+    }
 }
 
 void Webserver::dealWithClose(int clifd)
 {
     m_users[clifd].closeConn();
+}
+
+void Webserver::excute(int fd, int state)
+{
+    if(state) //1 读 0 写
+    {
+        if(m_actor_model) //reactor
+        {
+            if(m_users[fd].read_once())
+            {
+                m_users[fd].process();
+            }
+            else
+            {
+                m_users[fd].closeConn();
+            }
+        }
+        else  //proactor
+        {
+            m_users[fd].process();
+        }
+    }
+    else
+    {
+        if(m_actor_model) //reactor
+        {
+            if(!m_users[fd].write())
+                m_users[fd].closeConn();
+        }
+    }
 }

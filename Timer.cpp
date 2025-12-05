@@ -49,9 +49,9 @@ void Utils::modfd(int epollfd, int fd, int event,bool TRIGmode)
     epoll_event ev;
     ev.data.fd = fd;
     if(TRIGmode)
-        ev.events = event|EPOLLET|EPOLLRDHUP;
+        ev.events = event|EPOLLONESHOT|EPOLLET|EPOLLRDHUP;
     else
-        ev.events = event|EPOLLRDHUP;
+        ev.events = event|EPOLLONESHOT|EPOLLRDHUP;
 
     setnonblocking(fd);
     epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&ev);   

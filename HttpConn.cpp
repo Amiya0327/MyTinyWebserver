@@ -29,10 +29,10 @@ void HttpConn::init()
     m_start_line = 0;
     m_TRIGmode = 0;
     m_check_state = CHECK_STATE::CHECK_STATE_REQUESTLINE;
-    char* m_url = 0;
+    m_url = 0;
     METHOD m_method = GET;
-    char* m_version =  0;
-    int cgi = 0;  //判断是否启用post
+    m_version =  0;
+    cgi = 0;  //判断是否启用post
     m_host = 0;
     m_content_length = 0;
     m_linger = false;
@@ -41,7 +41,6 @@ void HttpConn::init()
     m_bytes_to_send = 0;
     m_host = 0;
     m_bytes_have_send = 0;
-    cgi = 0;
     memset(m_real_file,0,sizeof(m_real_file));
     memset(m_read_buf,0,sizeof(m_read_buf));
     memset(m_write_buf,0,sizeof(m_write_buf));
@@ -65,17 +64,40 @@ bool HttpConn::read_once()
     //ET读取数据
     if (m_TRIGmode)
     {
-
+        while(1)
+        {
+            bytes_read = recv(m_clifd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx-1, 0);
+            if(bytes_read==-1)
+            {
+                if(errno==EAGAIN||errno==EWOULDBLOCK)
+                {
+                    break;
+                }
+                return false;
+            }
+            else if(bytes_read==0)
+            {
+                return false;
+            }
+            m_read_idx += bytes_read;
+        }
     }
     else //LT读数据
     {
         bytes_read = recv(m_clifd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx-1, 0);
-        m_read_idx += bytes_read;
-
-        if (bytes_read <= 0)
+        if(bytes_read==-1)
+        {
+            if(errno==EAGAIN||errno==EWOULDBLOCK)
+            {
+                return true;
+            }
+            return false;
+        }
+        else if(bytes_read==0)
         {
             return false;
         }
+        m_read_idx += bytes_read;
     }
 
     return true;
@@ -583,7 +605,7 @@ bool HttpConn::write()
 
         if(m_bytes_to_send<=0)
         {
-            std::cout << "文件发送成功" << std::endl;
+            std::cout << "文件发送成功:共" << m_bytes_have_send <<"个字节" << std::endl;
             unmap();  //发送完成，关闭文件映射
             if(m_linger)  //持久连接
             {

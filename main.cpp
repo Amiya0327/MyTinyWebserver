@@ -10,7 +10,7 @@ int main(int argc, char* argv[])
 
     server.init(port,0,0);
 
-    server.TRIGmode(0);
+    server.TRIGmode();
 
     server.eventListen();
     

@@ -6,6 +6,7 @@
 #include <sys/epoll.h>
 #include "HttpConn.h"
 #include "Timer.h"
+#include "./ThreadPool/ThreadPool.h"
 
 const int MAX_EVENT_NUM = 10000; //最大事件数
 const int MAX_FD = 65536; //最大客户连接数
@@ -19,9 +20,9 @@ public:
     ~Webserver();
 
     //配置模式初始化
-    void init(unsigned short port,int lismode,int m_Climode);
+    void init(unsigned short port,int trigmode,int actor_mode);
 
-    void TRIGmode(int mode);
+    void TRIGmode();
 
     //事件循环
     void eventLoop();
@@ -35,9 +36,12 @@ private:
     void dealWithRead(int clifd);
     void dealWithWrite(int clifd);
     void dealWithClose(int clifd);
+    void excute(int fd,int state); //交给线程池处理业务的函数
 
     int m_lismode;
     int m_climode;
+    int m_TRIGmode;
+    int m_actor_model;
     int m_listenfd;
     unsigned short m_port;
     int m_epollfd;
