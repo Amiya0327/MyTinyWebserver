@@ -1,5 +1,8 @@
 #include "Timer.h"
 
+int* Utils::u_pipefd = 0;
+int Utils::u_epollfd = 0;
+
 Utils::Utils()
 {
 
@@ -55,4 +58,33 @@ void Utils::modfd(int epollfd, int fd, int event,bool TRIGmode)
 
     setnonblocking(fd);
     epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&ev);   
+}
+
+void Utils::addsig(int signal,void handle(int),bool restart)
+{
+    struct sigaction sa;
+    sa.sa_handler = handle;
+    if(restart)
+        sa.sa_flags|= SA_RESTART;
+    sigfillset(&sa.sa_mask);
+    if(sigaction(signal,&sa,0)==-1)
+        exit(-1);
+}
+
+void Utils::sig_handler(int sig)
+{
+    int save_errno = errno;
+    int msg = sig;
+    send(u_pipefd[1],(char*)&msg,1,0);
+    errno = save_errno;
+}
+
+void Utils::timer_handler()
+{
+    alarm(m_timeslot);
+}
+
+void Utils::init(int timeslot) 
+{
+    m_timeslot = timeslot;
 }

@@ -11,6 +11,7 @@
 const int MAX_EVENT_NUM = 10000; //最大事件数
 const int MAX_FD = 65536; //最大客户连接数
 const int MAX_USER_NUM = 10000;
+const int TIMESLOT = 5;
 
 class Webserver
 {
@@ -32,10 +33,11 @@ public:
 
 private:
 
-    void dealWithConn();
+    bool dealWithConn();
     void dealWithRead(int clifd);
     void dealWithWrite(int clifd);
     void dealWithClose(int clifd);
+    bool dealWithSignal(bool& timeout, bool& stop);
     void excute(int fd,int state); //交给线程池处理业务的函数
 
     int m_lismode;
@@ -45,6 +47,7 @@ private:
     int m_listenfd;
     unsigned short m_port;
     int m_epollfd;
+    int m_pipefd[2];
     epoll_event m_events[MAX_EVENT_NUM];
     HttpConn* m_users;
     Utils m_utils;

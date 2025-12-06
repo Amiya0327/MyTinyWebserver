@@ -9,6 +9,7 @@ Webserver::Webserver()
 Webserver::~Webserver()
 {
     close(m_listenfd);
+    close(m_epollfd);
     delete[] m_users;
 }
 
@@ -50,12 +51,30 @@ void Webserver::eventListen()
         exit(-1);
     }
     m_epollfd = epoll_create(1);
+    if(m_epollfd==-1)
+        exit(-1);
     HttpConn::s_epollfd = m_epollfd;
     m_utils.addfd(m_epollfd,m_listenfd,0,m_lismode);
     std::cout << "服务器监听端口" << m_port << std::endl;
+    int ret = socketpair(PF_UNIX,SOCK_STREAM,0,m_pipefd);
+    if(ret==-1)
+    exit(-1);
+
+    m_utils.setnonblocking(m_pipefd[1]);
+    m_utils.addfd(m_epollfd,m_pipefd[0],false,0);
+
+    m_utils.addsig(SIGPIPE,SIG_IGN,0);
+    m_utils.addsig(SIGALRM,m_utils.sig_handler,1);
+    m_utils.addsig(SIGTERM,m_utils.sig_handler,0);
+
+    alarm(TIMESLOT);
+    
+    m_utils.init(TIMESLOT);
+    Utils::u_epollfd = m_epollfd;
+    Utils::u_pipefd = m_pipefd;
 }
 
-void Webserver::dealWithConn()
+bool Webserver::dealWithConn()
 {
     sockaddr_in client;
     socklen_t len = sizeof(client);
@@ -68,14 +87,14 @@ void Webserver::dealWithConn()
             if(clientfd<0)
             {
                 perror("accept failed");
-                return;
+                return false;
             }
             if (HttpConn::s_user_cnt >= MAX_USER_NUM) 
             {
                 // 返回错误信息给客户端
                 m_utils.show_error(clientfd,"Server busy");
                 //LOG_WARN("Reject connection: too many users");
-                return;
+                return false;
             }
             m_users[clientfd].init(clientfd,client,m_climode);
             m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
@@ -88,26 +107,27 @@ void Webserver::dealWithConn()
         if((clientfd = accept(m_listenfd,(sockaddr*)&client,&len))<0)
         {
             perror("accept failed");
-            return;
+            return false;
         }
         if (HttpConn::s_user_cnt >= MAX_USER_NUM) 
         {
             // 返回错误信息给客户端
             m_utils.show_error(clientfd,"Server busy");
             //LOG_WARN("Reject connection: too many users");
-            return;
+            return false;
         }
         m_users[clientfd].init(clientfd,client,m_climode);
         m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
         HttpConn::s_user_cnt++;
         std::cout << "客户端连接" << clientfd << std::endl;
     }
-
+    return true;
 }
 
 void Webserver::eventLoop()
 {
     bool stop_server = false;
+    bool timeout = false;
     while(!stop_server)
     {
         int event_num = epoll_wait(m_epollfd,m_events,MAX_EVENT_NUM,-1);
@@ -122,6 +142,10 @@ void Webserver::eventLoop()
             {
                 dealWithClose(fd);
             }
+            else if(m_events[i].data.fd==m_pipefd[0]&& (m_events[i].events&EPOLLIN))
+            {
+                dealWithSignal(timeout,stop_server);
+            }
             else if (m_events[i].events & EPOLLIN) //处理客户连接上接收到的数据
             {
                 dealWithRead(fd);
@@ -130,9 +154,18 @@ void Webserver::eventLoop()
             {
                 dealWithWrite(fd);
             }
-            //处理信号待补充
+        }
+        
+        if(timeout)
+        {
+            m_utils.timer_handler();
+
+            std::cout << "timer tick" << std::endl;
+
+            timeout = 0;
         }
     }
+    std::cout << "程序正常退出" << std::endl;
 }
 
 void Webserver::TRIGmode()
@@ -224,4 +257,30 @@ void Webserver::excute(int fd, int state)
                 m_users[fd].closeConn();
         }
     }
+}
+
+bool Webserver::dealWithSignal(bool& timeout,bool& stop_server)
+{
+    int ret = 0;
+    char signals[1024];
+
+    ret = recv(m_pipefd[0],signals,sizeof(signals),0);
+    if(ret<=0)
+    return false;
+    else
+    {
+        for(int i=0; i<ret; i++)
+        {
+            if(signals[i]==SIGALRM)
+            {
+                timeout = true;
+            }
+            else if(signals[i]==SIGTERM)
+            {
+                stop_server = true;
+            }
+        }
+    }
+
+    return true;
 }
