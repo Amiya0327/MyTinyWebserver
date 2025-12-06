@@ -1,0 +1,3 @@
+/home/yzl/MyTinyWebserver/build/CMakeFiles/server.dir
+/home/yzl/MyTinyWebserver/build/CMakeFiles/edit_cache.dir
+/home/yzl/MyTinyWebserver/build/CMakeFiles/rebuild_cache.dir
