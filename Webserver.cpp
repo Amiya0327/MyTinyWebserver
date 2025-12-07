@@ -63,15 +63,43 @@ void Webserver::eventListen()
     m_utils.setnonblocking(m_pipefd[1]);
     m_utils.addfd(m_epollfd,m_pipefd[0],false,0);
 
-    m_utils.addsig(SIGPIPE,SIG_IGN,0);
+    m_utils.addsig(SIGPIPE,SIG_IGN,1);
     m_utils.addsig(SIGALRM,m_utils.sig_handler,1);
-    m_utils.addsig(SIGTERM,m_utils.sig_handler,0);
+    m_utils.addsig(SIGTERM,m_utils.sig_handler,1);
 
-    alarm(TIMESLOT);
+    alarm(TIMESLOT); //信号重入可能导致崩溃
     
     m_utils.init(TIMESLOT);
+    m_utils.m_manager.m_closeCallback = bind(&Webserver::closeTimeoutConn,this,placeholders::_1);
     Utils::u_epollfd = m_epollfd;
     Utils::u_pipefd = m_pipefd;
+}
+
+void Webserver::Timer(int fd,sockaddr_in addr)
+{
+    m_users[fd].init(fd,addr,m_climode);
+    HttpConn::s_user_cnt++;
+
+    Util_timer timer;
+    time_t cur = time(0);
+    timer.m_expire = cur+3*TIMESLOT;
+    timer.m_fd = fd;
+    m_utils.m_manager.addTimer(timer);
+}
+
+void Webserver::adjustTimer(int fd)
+{
+    time_t cur = time(0);
+    Util_timer timer;
+    timer.m_expire = cur+3*TIMESLOT;
+    timer.m_fd = fd;
+    m_utils.m_manager.addTimer(timer);
+}
+
+void Webserver::delTimer(int fd)
+{
+    closeTimeoutConn(fd);
+    m_utils.m_manager.delTimer(fd);
 }
 
 bool Webserver::dealWithConn()
@@ -96,9 +124,7 @@ bool Webserver::dealWithConn()
                 //LOG_WARN("Reject connection: too many users");
                 return false;
             }
-            m_users[clientfd].init(clientfd,client,m_climode);
-            m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
-            HttpConn::s_user_cnt++;
+            Timer(clientfd,client);
             std::cout << "客户端连接" << clientfd << std::endl;
         }
     }
@@ -116,9 +142,8 @@ bool Webserver::dealWithConn()
             //LOG_WARN("Reject connection: too many users");
             return false;
         }
-        m_users[clientfd].init(clientfd,client,m_climode);
-        m_utils.addfd(m_epollfd,clientfd,0,m_lismode);
-        HttpConn::s_user_cnt++;
+        Timer(clientfd,client);
+
         std::cout << "客户端连接" << clientfd << std::endl;
     }
     return true;
@@ -283,4 +308,9 @@ bool Webserver::dealWithSignal(bool& timeout,bool& stop_server)
     }
 
     return true;
+}
+
+void Webserver::closeTimeoutConn(int fd)
+{
+    m_users[fd].closeConn();
 }

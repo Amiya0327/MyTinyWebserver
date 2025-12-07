@@ -10,7 +10,7 @@
 #include <sys/mman.h>
 #include<unistd.h>
 #include <stdarg.h>
-#include "Timer.h"
+#include<sys/epoll.h>
 #include <sys/uio.h>
 
 const int READ_BUFFER_SIZE = 2048;
@@ -100,7 +100,6 @@ public:
 
     static int s_epollfd;
     static int s_user_cnt;
-    static Utils s_utils;
 private:
     char m_read_buf[READ_BUFFER_SIZE];
     char m_write_buf[WRITE_BUFFER_SIZE];

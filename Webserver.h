@@ -33,11 +33,20 @@ public:
 
 private:
 
+    //epoll事件相关
     bool dealWithConn();
     void dealWithRead(int clifd);
     void dealWithWrite(int clifd);
     void dealWithClose(int clifd);
     bool dealWithSignal(bool& timeout, bool& stop);
+
+    //定时器相关
+    void Timer(int fd,sockaddr_in addr);
+    void adjustTimer(int fd);
+    void delTimer(int fd);
+    void closeTimeoutConn(int fd);
+
+
     void excute(int fd,int state); //交给线程池处理业务的函数
 
     int m_lismode;

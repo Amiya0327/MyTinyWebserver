@@ -2,11 +2,10 @@
 
 int HttpConn::s_epollfd = -1;
 int HttpConn::s_user_cnt = 0;
-Utils HttpConn::s_utils = Utils();
 
 HttpConn::HttpConn()
 {
-    init();
+
 }
 
 HttpConn::~HttpConn()
@@ -14,11 +13,54 @@ HttpConn::~HttpConn()
 
 }
 
+void setnonblocking(int fd)
+{
+    fcntl(fd,F_SETFL,fcntl(fd,F_GETFL)|O_NONBLOCK);
+}
+
+void addfd(int epollfd, int fd,bool one_shot,bool TRIGmode)
+{
+    epoll_event ev;
+    ev.data.fd = fd;
+    if(TRIGmode)
+        ev.events = EPOLLIN|EPOLLET|EPOLLRDHUP;
+    else
+        ev.events = EPOLLIN|EPOLLRDHUP;
+
+    if(one_shot)
+    ev.events|= EPOLLONESHOT;
+    setnonblocking(fd);
+    epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&ev);
+}
+
+void removefd(int epollfd,int fd)
+{
+    epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
+    close(fd);
+    std::cout << "客户端连接断开" << std::endl;
+}
+
+void modfd(int epollfd, int fd, int event,bool TRIGmode)
+{
+    epoll_event ev;
+    ev.data.fd = fd;
+    if(TRIGmode)
+        ev.events = event|EPOLLONESHOT|EPOLLET|EPOLLRDHUP;
+    else
+        ev.events = event|EPOLLONESHOT|EPOLLRDHUP;
+
+    setnonblocking(fd);
+    epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&ev);   
+}
+
 void HttpConn::init(int fd,const sockaddr_in& addr,int trigmode)
 {
     m_clifd = fd;
     m_addr = addr;
     m_TRIGmode = trigmode;
+    addfd(s_epollfd,m_clifd,0,m_TRIGmode);
+
+    init();
 }
 
 void HttpConn::init()
@@ -48,7 +90,7 @@ void HttpConn::init()
 
 void HttpConn::closeConn()
 {
-    s_utils.removefd(s_epollfd,m_clifd);
+    removefd(s_epollfd,m_clifd);
     s_user_cnt--;
 }
 
@@ -108,7 +150,7 @@ void HttpConn::process()
     HTTP_CODE read_ret = process_read();
     if(read_ret == HTTP_CODE::NO_REQUEST)
     {
-        s_utils.modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
+        modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
         return;
     }
     bool write_ret = process_write(read_ret);
@@ -117,7 +159,7 @@ void HttpConn::process()
         //关闭连接
         closeConn();
     }
-    s_utils.modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
+    modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
 }
 
 char* HttpConn::get_line()
@@ -569,7 +611,7 @@ bool HttpConn::write()
 
     if(m_bytes_to_send==0)  //数据不完整，重新初始化
     {
-        s_utils.modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
+        modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
         init();
         return true;
     }
@@ -582,7 +624,7 @@ bool HttpConn::write()
         {
             if(errno==EAGAIN) //暂时无法发送,等待
             {
-                s_utils.modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
+                modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
                 return true;
             }
             unmap();  //其他错误，关闭map映射并关闭连接
@@ -609,7 +651,7 @@ bool HttpConn::write()
             unmap();  //发送完成，关闭文件映射
             if(m_linger)  //持久连接
             {
-                s_utils.modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
+                modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
                 init();   //初始化，不关闭连接
                 std::cout << "初始化完成" << std::endl;
                 return true; 

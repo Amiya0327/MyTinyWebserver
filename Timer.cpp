@@ -3,12 +3,37 @@
 int* Utils::u_pipefd = 0;
 int Utils::u_epollfd = 0;
 
+bool TimerCompare::operator()(Util_timer& t1, Util_timer& t2)
+{
+    return t1.m_expire > t2.m_expire;
+}
+
+Util_timer::Util_timer()
+{
+
+}
+
+Util_timer::~Util_timer()
+{
+
+}
+
 Utils::Utils()
 {
 
 }
 
 Utils::~Utils()
+{
+
+}
+
+TimerManager::TimerManager()
+{
+
+}
+
+TimerManager::~TimerManager()
 {
 
 }
@@ -63,6 +88,7 @@ void Utils::modfd(int epollfd, int fd, int event,bool TRIGmode)
 void Utils::addsig(int signal,void handle(int),bool restart)
 {
     struct sigaction sa;
+    memset(&sa,0,sizeof(sa));
     sa.sa_handler = handle;
     if(restart)
         sa.sa_flags|= SA_RESTART;
@@ -81,10 +107,48 @@ void Utils::sig_handler(int sig)
 
 void Utils::timer_handler()
 {
+    m_manager.tick();
     alarm(m_timeslot);
 }
 
 void Utils::init(int timeslot) 
 {
     m_timeslot = timeslot;
+}
+
+void TimerManager::addTimer(Util_timer timer)
+{
+    m_cur_expire[timer.m_fd] = timer.m_expire;
+    m_timer_pq.emplace(timer);
+}
+
+void TimerManager::delTimer(int fd)
+{
+    m_cur_expire.erase(fd);
+}
+
+void TimerManager::tick()
+{
+    time_t cur = time(0);
+
+    while(!m_timer_pq.empty())
+    {
+        Util_timer timer = m_timer_pq.top();
+        if(m_cur_expire.find(timer.m_fd)==m_cur_expire.end())
+        {
+            m_timer_pq.pop();
+            continue;
+        }
+        if(timer.m_expire<cur)
+        {
+            m_timer_pq.pop();
+            if(m_cur_expire[timer.m_fd]==timer.m_expire)
+            {
+                m_closeCallback(timer.m_fd);
+                std::cout << "连接超时,关闭fd:"<< timer.m_fd <<  "和定时器" << std::endl;
+            }
+        }
+        else
+            break;
+    }
 }

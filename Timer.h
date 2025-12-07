@@ -7,6 +7,39 @@
 #include<iostream>
 #include<queue>
 #include <signal.h>
+#include <arpa/inet.h>
+#include<unordered_map>
+#include<functional>
+
+
+class Util_timer
+{
+public:
+    Util_timer();
+    ~Util_timer();
+    int m_fd;
+    time_t m_expire;
+};
+
+class TimerCompare
+{
+public:
+    bool operator()(Util_timer& t1, Util_timer& t2);
+};
+
+class TimerManager
+{
+public:
+    TimerManager();
+    ~TimerManager();
+    void addTimer(Util_timer);
+    void delTimer(int );
+    void tick();
+    std::function<void(int)> m_closeCallback;
+private:
+    std::priority_queue<Util_timer,std::vector<Util_timer>,TimerCompare> m_timer_pq;
+    std::unordered_map<int,time_t> m_cur_expire;
+};
 
 class Utils
 {
@@ -34,9 +67,10 @@ public:
     void init(int timeslot); 
 
     static void sig_handler(int sig);
-
+    
     static int* u_pipefd;
     static int u_epollfd;
+    TimerManager m_manager;
 
 private:
     int m_timeslot;
