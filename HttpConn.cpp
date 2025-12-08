@@ -1,7 +1,7 @@
 #include "HttpConn.h"
 
 int HttpConn::s_epollfd = -1;
-int HttpConn::s_user_cnt = 0;
+std::atomic<int> HttpConn::s_user_cnt = 0;
 
 HttpConn::HttpConn()
 {
@@ -145,21 +145,21 @@ bool HttpConn::read_once()
     return true;
 }
 
-void HttpConn::process()
+bool HttpConn::process()
 {
     HTTP_CODE read_ret = process_read();
     if(read_ret == HTTP_CODE::NO_REQUEST)
     {
         modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
-        return;
+        return true;
     }
     bool write_ret = process_write(read_ret);
     if(!write_ret)
     {
-        //关闭连接
-        closeConn();
+        return false;
     }
     modfd(s_epollfd,m_clifd,EPOLLOUT,m_TRIGmode);
+    return true;
 }
 
 char* HttpConn::get_line()

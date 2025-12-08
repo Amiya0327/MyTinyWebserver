@@ -44,6 +44,7 @@ private:
 class Utils
 {
 public:
+
     Utils();
     ~Utils();
 

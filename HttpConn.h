@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include<sys/epoll.h>
 #include <sys/uio.h>
+#include <atomic>
 
 const int READ_BUFFER_SIZE = 2048;
 const int WRITE_BUFFER_SIZE = 1024;
@@ -75,7 +76,7 @@ public:
     //请求完成时初始化缓冲区等数据
     void init();
     bool read_once();
-    void process();
+    bool process();
     bool write();
     void unmap();
 
@@ -99,7 +100,7 @@ public:
     bool add_blank_line();    
 
     static int s_epollfd;
-    static int s_user_cnt;
+    static std::atomic<int> s_user_cnt;
 private:
     char m_read_buf[READ_BUFFER_SIZE];
     char m_write_buf[WRITE_BUFFER_SIZE];

@@ -80,14 +80,10 @@ void Webserver::Timer(int fd,sockaddr_in addr)
     m_users[fd].init(fd,addr,m_climode);
     HttpConn::s_user_cnt++;
 
-    Util_timer timer;
-    time_t cur = time(0);
-    timer.m_expire = cur+3*TIMESLOT;
-    timer.m_fd = fd;
-    m_utils.m_manager.addTimer(timer);
+    addTimer(fd);
 }
 
-void Webserver::adjustTimer(int fd)
+void Webserver::addTimer(int fd)
 {
     time_t cur = time(0);
     Util_timer timer;
@@ -98,7 +94,6 @@ void Webserver::adjustTimer(int fd)
 
 void Webserver::delTimer(int fd)
 {
-    closeTimeoutConn(fd);
     m_utils.m_manager.delTimer(fd);
 }
 
@@ -219,6 +214,7 @@ void Webserver::TRIGmode()
 
 void Webserver::dealWithRead(int clifd)
 {
+    addTimer(clifd);
     if(m_actor_model) //reactor
     {
         ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,1));
@@ -231,6 +227,7 @@ void Webserver::dealWithRead(int clifd)
         }
         else
         {
+            delTimer(clifd);
             m_users[clifd].closeConn();
         }
     }
@@ -245,12 +242,17 @@ void Webserver::dealWithWrite(int clifd)
     else
     {
         if(!m_users[clifd].write())
+        {
+            delTimer(clifd);
             m_users[clifd].closeConn();
+        }
+        addTimer(clifd);
     }
 }
 
 void Webserver::dealWithClose(int clifd)
 {
+    delTimer(clifd);
     m_users[clifd].closeConn();
 }
 
@@ -262,16 +264,25 @@ void Webserver::excute(int fd, int state)
         {
             if(m_users[fd].read_once())
             {
-                m_users[fd].process();
+                if(!m_users[fd].process())
+                {
+                    delTimer(fd);
+                    m_users[fd].closeConn();
+                }
             }
             else
             {
+                delTimer(fd);
                 m_users[fd].closeConn();
             }
         }
         else  //proactor
         {
-            m_users[fd].process();
+            if(!m_users[fd].process())
+            {
+                delTimer(fd);
+                m_users[fd].closeConn();
+            }
         }
     }
     else
@@ -279,7 +290,11 @@ void Webserver::excute(int fd, int state)
         if(m_actor_model) //reactor
         {
             if(!m_users[fd].write())
+            {
+                delTimer(fd);
                 m_users[fd].closeConn();
+            }
+            addTimer(fd);
         }
     }
 }
@@ -312,5 +327,6 @@ bool Webserver::dealWithSignal(bool& timeout,bool& stop_server)
 
 void Webserver::closeTimeoutConn(int fd)
 {
+    delTimer(fd);
     m_users[fd].closeConn();
 }

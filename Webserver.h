@@ -42,7 +42,7 @@ private:
 
     //定时器相关
     void Timer(int fd,sockaddr_in addr);
-    void adjustTimer(int fd);
+    void addTimer(int fd);
     void delTimer(int fd);
     void closeTimeoutConn(int fd);
 
