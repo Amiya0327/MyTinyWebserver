@@ -13,11 +13,24 @@ Webserver::~Webserver()
     delete[] m_users;
 }
 
-void Webserver::init(unsigned short port,int trigmode,int actor_model)
+void Webserver::init(unsigned short port,int trigmode,int actor_model,std::string host,unsigned short sqlport,std::string 
+    user,std::string passwd,std::string dbname)
 {
     m_port = port;
     m_TRIGmode = trigmode;
     m_actor_model = actor_model;
+    m_sqlport = sqlport;
+    m_user = user;
+    m_host = host;
+    m_passwd = passwd;
+    m_sqlport = sqlport;
+    m_dbname = dbname;
+}
+
+void Webserver::sqlPool()
+{
+    ConnPool::get_instance().config(m_user,m_dbname,m_passwd,m_host);
+    ConnPool::get_instance().reload();
 }
 
 void Webserver::eventListen()
@@ -70,7 +83,7 @@ void Webserver::eventListen()
     alarm(TIMESLOT); //信号重入可能导致崩溃
     
     m_utils.init(TIMESLOT);
-    m_utils.m_manager.m_closeCallback = bind(&Webserver::closeTimeoutConn,this,placeholders::_1);
+    m_utils.m_manager.m_closeCallback = bind(&Webserver::closeTimeoutConn,this,std::placeholders::_1);
     Utils::u_epollfd = m_epollfd;
     Utils::u_pipefd = m_pipefd;
 }
@@ -217,13 +230,13 @@ void Webserver::dealWithRead(int clifd)
     addTimer(clifd);
     if(m_actor_model) //reactor
     {
-        ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,1));
+        ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd,1));
     }
     else  //proactor
     {
         if(m_users[clifd].read_once())
         {
-            ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,1));
+            ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd,1));
         }
         else
         {
@@ -237,7 +250,7 @@ void Webserver::dealWithWrite(int clifd)
 {
     if(m_actor_model)
     {
-        ThreadPool::get_instance().addTask(bind(&Webserver::excute,this,clifd,0));
+        ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd,0));
     }
     else
     {

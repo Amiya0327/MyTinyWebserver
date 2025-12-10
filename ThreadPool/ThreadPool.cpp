@@ -2,12 +2,12 @@
 
 ThreadPool::ThreadPool(int min, int max) : m_maxThreadNum(max), m_minThreadNum(min), m_act(true), m_idleThreadNum(min), m_curTheadNum(min)
 {
-    m_manager = new thread(&ThreadPool::manager, this);
+    m_manager = new std::thread(&ThreadPool::manager, this);
     m_exitThreadNum.store(0);
     for (int i = 0; i < min; i++)
     {
-        auto t = thread(&ThreadPool::worker, this);
-        m_workers.insert(pair<thread::id, thread>(t.get_id(), move(t)));
+        auto t = std::thread(&ThreadPool::worker, this);
+        m_workers.insert(std::pair<std::thread::id, std::thread>(t.get_id(), move(t)));
     }
 }
 
@@ -42,7 +42,7 @@ void ThreadPool::manager()
 {
     while (m_act)
     {
-        this_thread::sleep_for(chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         int idle = m_idleThreadNum.load();
         int cur = m_curTheadNum.load();
         if (idle > cur / 2 && cur > m_minThreadNum + 1)
@@ -50,7 +50,7 @@ void ThreadPool::manager()
             m_exitThreadNum.store(2);
             m_cv.notify_all();
             {
-                lock_guard<mutex> lock(m_id);
+                std::lock_guard<std::mutex> lock(m_id);
                 for (auto &id : m_ids)
                 {
                     auto it = m_workers.find(id);
@@ -69,8 +69,8 @@ void ThreadPool::manager()
         }
         if (idle == 0 && cur < m_maxThreadNum)
         {
-            auto t = thread(&ThreadPool::worker, this);
-            m_workers.insert(pair<thread::id, thread>(t.get_id(), move(t)));
+            auto t = std::thread(&ThreadPool::worker, this);
+            m_workers.insert(std::pair<std::thread::id, std::thread>(t.get_id(), move(t)));
             //cout << "增加了一个线程" << endl;
             m_curTheadNum++;
             m_idleThreadNum++;
@@ -82,17 +82,17 @@ void ThreadPool::worker()
 {
     while (m_act)
     {
-        function<void()> task = nullptr;
+        std::function<void()> task = nullptr;
         {
-            unique_lock<mutex> lock(m_mtx);
+            std::unique_lock<std::mutex> lock(m_mtx);
             m_cv.wait(lock, [this]()
                       { return !m_tasks.empty() || !m_act || m_exitThreadNum; });
             if (m_exitThreadNum)
             {
                 m_exitThreadNum--;
                 {
-                    lock_guard<mutex> lock(m_id);
-                    m_ids.emplace_back(this_thread::get_id());
+                    std::lock_guard<std::mutex> lock(m_id);
+                    m_ids.emplace_back(std::this_thread::get_id());
                 }
                 return;
             }
@@ -114,10 +114,10 @@ void ThreadPool::worker()
     }
 }
 
-void ThreadPool::addTask(function<void()> task)
+void ThreadPool::addTask(std::function<void()> task)
 {
     {
-        lock_guard<mutex> lock(m_mtx);
+        std::lock_guard<std::mutex> lock(m_mtx);
         m_tasks.emplace(task);
     }
     m_cv.notify_one();

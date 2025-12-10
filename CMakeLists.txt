@@ -8,7 +8,11 @@ add_executable(
     server
     main.cpp
     Webserver.cpp
-    Timer.cpp
-    HttpConn.cpp
+    ./Timer/Timer.cpp
+    ./HttpConn/HttpConn.cpp
     ./ThreadPool/ThreadPool.cpp
+    ./ConnPool/ConnPool.cpp
+    ./ConnPool/MysqlConn.cpp
 )
+
+target_link_libraries(server PRIVATE mysqlclient)

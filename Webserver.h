@@ -4,9 +4,11 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/epoll.h>
-#include "HttpConn.h"
-#include "Timer.h"
+#include "./HttpConn/HttpConn.h"
+#include "./Timer/Timer.h"
 #include "./ThreadPool/ThreadPool.h"
+#include "./ConnPool/ConnPool.h"
+#include "./ConnPool/MysqlConn.h"
 
 const int MAX_EVENT_NUM = 10000; //最大事件数
 const int MAX_FD = 65536; //最大客户连接数
@@ -21,9 +23,12 @@ public:
     ~Webserver();
 
     //配置模式初始化
-    void init(unsigned short port,int trigmode,int actor_mode);
+    void init(unsigned short port,int trigmode,int actor_model,std::string host,unsigned short sqlport,std::string 
+    user,std::string passwd,std::string dbname);
+    
+    void sqlPool(); //数据库连接池初始化
 
-    void TRIGmode();
+    void TRIGmode();//触发模式
 
     //事件循环
     void eventLoop();
@@ -49,6 +54,11 @@ private:
 
     void excute(int fd,int state); //交给线程池处理业务的函数
 
+    std::string m_user;
+    std::string m_host;
+    std::string m_passwd;
+    unsigned short m_sqlport;
+    std::string m_dbname;
     int m_lismode;
     int m_climode;
     int m_TRIGmode;
