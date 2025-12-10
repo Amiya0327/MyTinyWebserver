@@ -4,6 +4,7 @@
 Webserver::Webserver()
 {
     m_users = new HttpConn[MAX_FD];
+    m_fd_mutex = new std::mutex[MAX_FD];
 }
 
 Webserver::~Webserver()
@@ -11,14 +12,14 @@ Webserver::~Webserver()
     close(m_listenfd);
     close(m_epollfd);
     delete[] m_users;
+    delete[] m_fd_mutex;
 }
 
-void Webserver::init(unsigned short port,int trigmode,int actor_model,std::string host,unsigned short sqlport,std::string 
+void Webserver::init(unsigned short port,int trigmode,std::string host,unsigned short sqlport,std::string 
     user,std::string passwd,std::string dbname)
 {
     m_port = port;
     m_TRIGmode = trigmode;
-    m_actor_model = actor_model;
     m_sqlport = sqlport;
     m_user = user;
     m_host = host;
@@ -58,7 +59,7 @@ void Webserver::eventListen()
         exit(-1);
     }
 
-    if(listen(m_listenfd,5)<0)
+    if(listen(m_listenfd,256)<0)
     {
         perror("listen");
         exit(-1);
@@ -68,7 +69,7 @@ void Webserver::eventListen()
         exit(-1);
     HttpConn::s_epollfd = m_epollfd;
     m_utils.addfd(m_epollfd,m_listenfd,0,m_lismode);
-    std::cout << "服务器监听端口" << m_port << std::endl;
+    //std::cout << "服务器监听端口" << m_port << std::endl;
     int ret = socketpair(PF_UNIX,SOCK_STREAM,0,m_pipefd);
     if(ret==-1)
     exit(-1);
@@ -122,8 +123,13 @@ bool Webserver::dealWithConn()
             clientfd = accept(m_listenfd,(sockaddr*)&client,&len);
             if(clientfd<0)
             {
-                perror("accept failed");
-                return false;
+                if(errno==EAGAIN||errno==EWOULDBLOCK)
+                    break;
+                else
+                {
+                    perror("accept failed");
+                    return false;
+                }
             }
             if (HttpConn::s_user_cnt >= MAX_USER_NUM) 
             {
@@ -133,7 +139,7 @@ bool Webserver::dealWithConn()
                 return false;
             }
             Timer(clientfd,client);
-            std::cout << "客户端连接" << clientfd << std::endl;
+            //std::cout << "客户端连接" << clientfd << std::endl;
         }
     }
     else
@@ -152,7 +158,7 @@ bool Webserver::dealWithConn()
         }
         Timer(clientfd,client);
 
-        std::cout << "客户端连接" << clientfd << std::endl;
+        //std::cout << "客户端连接" << clientfd << std::endl;
     }
     return true;
 }
@@ -193,12 +199,12 @@ void Webserver::eventLoop()
         {
             m_utils.timer_handler();
 
-            std::cout << "timer tick" << std::endl;
+            //std::cout << "timer tick" << std::endl;
 
             timeout = 0;
         }
     }
-    std::cout << "程序正常退出" << std::endl;
+    //std::cout << "程序正常退出" << std::endl;
 }
 
 void Webserver::TRIGmode()
@@ -227,40 +233,25 @@ void Webserver::TRIGmode()
 
 void Webserver::dealWithRead(int clifd)
 {
-    addTimer(clifd);
-    if(m_actor_model) //reactor
+    if(m_users[clifd].read_once())
     {
-        ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd,1));
+        ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd));
     }
-    else  //proactor
+    else
     {
-        if(m_users[clifd].read_once())
-        {
-            ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd,1));
-        }
-        else
-        {
-            delTimer(clifd);
-            m_users[clifd].closeConn();
-        }
+        delTimer(clifd);
+        m_users[clifd].closeConn();
     }
 }
 
 void Webserver::dealWithWrite(int clifd)
 {
-    if(m_actor_model)
+    if(!m_users[clifd].write())
     {
-        ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd,0));
+        delTimer(clifd);
+        m_users[clifd].closeConn();
     }
-    else
-    {
-        if(!m_users[clifd].write())
-        {
-            delTimer(clifd);
-            m_users[clifd].closeConn();
-        }
-        addTimer(clifd);
-    }
+    addTimer(clifd);
 }
 
 void Webserver::dealWithClose(int clifd)
@@ -269,46 +260,12 @@ void Webserver::dealWithClose(int clifd)
     m_users[clifd].closeConn();
 }
 
-void Webserver::excute(int fd, int state)
+void Webserver::excute(int fd)
 {
-    if(state) //1 读 0 写
+    if(!m_users[fd].process())
     {
-        if(m_actor_model) //reactor
-        {
-            if(m_users[fd].read_once())
-            {
-                if(!m_users[fd].process())
-                {
-                    delTimer(fd);
-                    m_users[fd].closeConn();
-                }
-            }
-            else
-            {
-                delTimer(fd);
-                m_users[fd].closeConn();
-            }
-        }
-        else  //proactor
-        {
-            if(!m_users[fd].process())
-            {
-                delTimer(fd);
-                m_users[fd].closeConn();
-            }
-        }
-    }
-    else
-    {
-        if(m_actor_model) //reactor
-        {
-            if(!m_users[fd].write())
-            {
-                delTimer(fd);
-                m_users[fd].closeConn();
-            }
-            addTimer(fd);
-        }
+        delTimer(fd);
+        m_users[fd].closeConn();
     }
 }
 

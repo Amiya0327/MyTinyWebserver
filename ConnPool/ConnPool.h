@@ -19,7 +19,7 @@ public:
 
     static ConnPool& get_instance();
 
-    void config(std::string user,std::string dbName,std::string password,std::string ip,int min = 5,int max = 20,unsigned short port = 3306);
+    void config(std::string user,std::string dbName,std::string password,std::string ip,int min = 15,int max = 30,unsigned short port = 3306);
 
     void reload();
 

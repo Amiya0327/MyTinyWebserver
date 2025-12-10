@@ -35,9 +35,12 @@ void addfd(int epollfd, int fd,bool one_shot,bool TRIGmode)
 
 void removefd(int epollfd,int fd)
 {
+    if(fd==-1)
+    return;
     epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
     close(fd);
-    std::cout << "客户端连接断开" << std::endl;
+
+    //std::cout << "客户端连接断开" << std::endl;
 }
 
 void modfd(int epollfd, int fd, int event,bool TRIGmode)
@@ -91,7 +94,10 @@ void HttpConn::init()
 
 void HttpConn::closeConn()
 {
+    if(m_clifd==-1)
+    return;
     removefd(s_epollfd,m_clifd);
+    m_clifd = -1;
     s_user_cnt--;
 }
 
@@ -176,7 +182,7 @@ HttpConn::HTTP_CODE HttpConn::process_read()
     while( (m_check_state==CHECK_STATE_CONTENT&&line_status==LINE_OK) || ((line_status = parse_line()) == LINE_OK) )
     {
         text = get_line();
-        std::cout << text<< std::endl;
+        // std::cout << text<< std::endl;
         m_start_line = m_checked_idx;
         if(m_check_state==CHECK_STATE_REQUESTLINE)
         {
@@ -287,7 +293,7 @@ bool HttpConn::process_write(HTTP_CODE read_ret)
             m_iv[1].iov_len = m_file_stat.st_size;
             m_iv_cnt = 2;
             m_bytes_to_send = m_write_idx+m_file_stat.st_size;
-            std::cout << "文件写入缓冲区成功" << std::endl;
+            //std::cout << "文件写入缓冲区成功" << std::endl;
             return true;
         }
         else
@@ -363,7 +369,7 @@ HttpConn::LINE_STATUS HttpConn::parse_line()
 
 HttpConn::HTTP_CODE HttpConn::parse_request_line(char* text)
 {
-    std::cout << "解析请求行" << std::endl;
+    //std::cout << "解析请求行" << std::endl;
     m_url = strpbrk(text," \t");
     if(!m_url)
     return BAD_REQUEST;
@@ -389,7 +395,7 @@ HttpConn::HTTP_CODE HttpConn::parse_request_line(char* text)
     *m_version = '\0';
     m_version++;
     m_version += strspn(m_version," \t");
-    if(strcasecmp(m_version,"HTTP/1.1"))
+    if(strcasecmp(m_version,"HTTP/1.1")&&strcasecmp(m_version,"HTTP/1.0"))
         return BAD_REQUEST;
 
     if(strncasecmp(m_url,"http://",7)==0)
@@ -417,7 +423,7 @@ HttpConn::HTTP_CODE HttpConn::parse_request_line(char* text)
 
 HttpConn::HTTP_CODE HttpConn::parse_headers(char *text)
 {
-    std::cout << "解析请求头" << std::endl;
+    //std::cout << "解析请求头" << std::endl;
 
     if(text[0]=='\0')
     {
@@ -458,7 +464,7 @@ HttpConn::HTTP_CODE HttpConn::parse_headers(char *text)
 
 HttpConn::HTTP_CODE HttpConn::parse_content(char *text)
 {
-    std::cout << "解析内容" << std::endl;
+    //std::cout << "解析内容" << std::endl;
     if(m_read_idx>=m_content_length+m_check_state)
     {
         text[m_content_length] = '\0';
@@ -494,12 +500,12 @@ HttpConn::HTTP_CODE HttpConn::do_request()
             {
                 passwd+=m_string[i];
             }
-            std::cout << "用户:" << user << " 密码:" << passwd << std::endl;
+            //std::cout << "用户:" << user << " 密码:" << passwd << std::endl;
             std::string query = "select id from user where username='" + user + "' && password='"+passwd +"';";
             std::shared_ptr<MysqlConn> sql_conn = ConnPool::get_instance().getConnection();
             sql_conn->query(query);
             exit_flag = sql_conn->next();
-            std::cout << "用户存在:" << exit_flag << std::endl;
+            //std::cout << "用户存在:" << exit_flag << std::endl;
         }
         if(url=="/CGISQL_LOG.cgi")
         {
@@ -571,7 +577,7 @@ HttpConn::HTTP_CODE HttpConn::do_request()
     int fd = open(m_real_file,O_RDONLY);
     m_file_addr = (char*)mmap(0,m_file_stat.st_size,PROT_READ,MAP_PRIVATE,fd,0);
     close(fd);
-    std::cout << "m_url:" << m_real_file << std::endl;
+    //std::cout << "m_url:" << m_real_file << std::endl;
     return FILE_REQUEST;
 }
 
@@ -617,13 +623,13 @@ bool HttpConn::write()
 
         if(m_bytes_to_send<=0)
         {
-            std::cout << "文件发送成功:共" << m_bytes_have_send <<"个字节" << std::endl;
+            //std::cout << "文件发送成功:共" << m_bytes_have_send <<"个字节" << std::endl;
             unmap();  //发送完成，关闭文件映射
             if(m_linger)  //持久连接
             {
                 modfd(s_epollfd,m_clifd,EPOLLIN,m_TRIGmode);
                 init();   //初始化，不关闭连接
-                std::cout << "初始化完成" << std::endl;
+                //std::cout << "初始化完成" << std::endl;
                 return true; 
             }
             else

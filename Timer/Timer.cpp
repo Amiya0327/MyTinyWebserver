@@ -69,7 +69,7 @@ void Utils::removefd(int epollfd,int fd)
 {
     epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
     close(fd);
-    std::cout << "客户端连接断开" << std::endl;
+    //std::cout << "客户端连接断开" << std::endl;
 }
 
 void Utils::modfd(int epollfd, int fd, int event,bool TRIGmode)
@@ -145,7 +145,7 @@ void TimerManager::tick()
             if(m_cur_expire[timer.m_fd]==timer.m_expire)
             {
                 m_closeCallback(timer.m_fd);
-                std::cout << "连接超时,关闭fd:"<< timer.m_fd <<  "和定时器" << std::endl;
+                //std::cout << "连接超时,关闭fd:"<< timer.m_fd <<  "和定时器" << std::endl;
             }
         }
         else
