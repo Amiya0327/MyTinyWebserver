@@ -13,6 +13,15 @@ HttpConn::~HttpConn()
 
 }
 
+int HttpConn::fd()
+{
+    return m_clifd;
+}
+sockaddr_in HttpConn::addr()
+{
+    return m_addr;
+}
+
 void setnonblocking(int fd)
 {
     fcntl(fd,F_SETFL,fcntl(fd,F_GETFL)|O_NONBLOCK);
@@ -39,7 +48,6 @@ void removefd(int epollfd,int fd)
     return;
     epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
     close(fd);
-
     //std::cout << "客户端连接断开" << std::endl;
 }
 
@@ -99,6 +107,7 @@ void HttpConn::closeConn()
     removefd(s_epollfd,m_clifd);
     m_clifd = -1;
     s_user_cnt--;
+    LOG_INFO("connection of client(%s) closed",inet_ntoa(m_addr.sin_addr));
 }
 
 
@@ -182,6 +191,7 @@ HttpConn::HTTP_CODE HttpConn::process_read()
     while( (m_check_state==CHECK_STATE_CONTENT&&line_status==LINE_OK) || ((line_status = parse_line()) == LINE_OK) )
     {
         text = get_line();
+        LOG_INFO("%s",text);
         // std::cout << text<< std::endl;
         m_start_line = m_checked_idx;
         if(m_check_state==CHECK_STATE_REQUESTLINE)

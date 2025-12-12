@@ -14,6 +14,7 @@
 #include <sys/uio.h>
 #include <atomic>
 #include "../ConnPool/ConnPool.h"
+#include "../Logger/Logger.h"
 
 const int READ_BUFFER_SIZE = 2048;
 const int WRITE_BUFFER_SIZE = 1024;
@@ -98,7 +99,9 @@ public:
     bool add_content_type();
     bool add_content_length(int content_length);
     bool add_linger();
-    bool add_blank_line();    
+    bool add_blank_line();
+    int fd();
+    sockaddr_in addr();
 
     static int s_epollfd;
     static std::atomic<int> s_user_cnt;
@@ -110,6 +113,7 @@ private:
     int m_bytes_to_send;
     int m_bytes_have_send;
     int m_clifd;
+    sockaddr_in m_addr;
     int m_read_idx;
     int m_write_idx;
     int m_checked_idx;
@@ -128,5 +132,4 @@ private:
     char* m_version;
     int cgi;  //判断是否启用post
     CHECK_STATE m_check_state;
-    sockaddr_in m_addr;
 };

@@ -19,6 +19,8 @@ int main(int argc, char* argv[])
 
     server.TRIGmode();
 
+    server.Log("Server.log");
+
     server.eventListen();
     
     server.eventLoop();

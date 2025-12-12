@@ -10,11 +10,12 @@
 #include "./ConnPool/ConnPool.h"
 #include "./ConnPool/MysqlConn.h"
 #include<mutex>
+#include "./Logger/Logger.h"
 
 const int MAX_EVENT_NUM = 10000; //最大事件数
 const int MAX_FD = 65536; //最大客户连接数
 const int MAX_USER_NUM = 10000;
-const int TIMESLOT = 5;
+const int TIMESLOT = 1;
 
 class Webserver
 {
@@ -37,6 +38,8 @@ public:
     //监听初始化
     void eventListen();
 
+    void Log(const std::string& filename);
+
 private:
 
     //epoll事件相关
@@ -51,7 +54,6 @@ private:
     void addTimer(int fd);
     void delTimer(int fd);
     void closeTimeoutConn(int fd);
-
 
     void excute(int fd); //交给线程池处理业务的函数
 

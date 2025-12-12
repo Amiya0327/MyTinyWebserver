@@ -11,6 +11,7 @@ Webserver::~Webserver()
 {
     close(m_listenfd);
     close(m_epollfd);
+    Logger::get_instance().close();
     delete[] m_users;
     delete[] m_fd_mutex;
 }
@@ -40,7 +41,7 @@ void Webserver::eventListen()
 
     if(m_listenfd<0)
     {
-        perror("socket");
+        LOG_ERROR("socket failure");
         exit(-1);
     }
 
@@ -55,24 +56,30 @@ void Webserver::eventListen()
     //如果port==0，系统bind时自动分配端口由getsockname获取端口号
     if(bind(m_listenfd,(sockaddr*)&ser_addr,sizeof(sockaddr))<0)
     {
-        perror("bind");
+        LOG_ERROR("bind failure");
         exit(-1);
     }
 
-    if(listen(m_listenfd,256)<0)
+    if(listen(m_listenfd,512)<0)
     {
-        perror("listen");
+        LOG_ERROR("listen failure");
         exit(-1);
     }
     m_epollfd = epoll_create(1);
     if(m_epollfd==-1)
+    {
+        LOG_ERROR("epoll_create failure");
         exit(-1);
+    }
     HttpConn::s_epollfd = m_epollfd;
     m_utils.addfd(m_epollfd,m_listenfd,0,m_lismode);
     //std::cout << "服务器监听端口" << m_port << std::endl;
     int ret = socketpair(PF_UNIX,SOCK_STREAM,0,m_pipefd);
     if(ret==-1)
-    exit(-1);
+    {
+        LOG_ERROR("socketpair failure");
+        exit(-1);
+    }
 
     m_utils.setnonblocking(m_pipefd[1]);
     m_utils.addfd(m_epollfd,m_pipefd[0],false,0);
@@ -89,6 +96,11 @@ void Webserver::eventListen()
     Utils::u_pipefd = m_pipefd;
 }
 
+void Webserver::Log(const std::string& filename)
+{
+    Logger::get_instance().open(filename);
+}
+
 void Webserver::Timer(int fd,sockaddr_in addr)
 {
     m_users[fd].init(fd,addr,m_climode);
@@ -101,14 +113,16 @@ void Webserver::addTimer(int fd)
 {
     time_t cur = time(0);
     Util_timer timer;
-    timer.m_expire = cur+3*TIMESLOT;
+    timer.m_expire = cur+30*TIMESLOT;
     timer.m_fd = fd;
     m_utils.m_manager.addTimer(timer);
+    LOG_INFO("adjust timer once");
 }
 
 void Webserver::delTimer(int fd)
 {
     m_utils.m_manager.delTimer(fd);
+    LOG_INFO("close fd %d",m_users[fd].fd());
 }
 
 bool Webserver::dealWithConn()
@@ -127,7 +141,7 @@ bool Webserver::dealWithConn()
                     break;
                 else
                 {
-                    perror("accept failed");
+                    LOG_ERROR("%s:errno is %d","accept failure",errno);
                     return false;
                 }
             }
@@ -135,10 +149,11 @@ bool Webserver::dealWithConn()
             {
                 // 返回错误信息给客户端
                 m_utils.show_error(clientfd,"Server busy");
-                //LOG_WARN("Reject connection: too many users");
+                LOG_WARN("Reject connection: too many users");
                 return false;
             }
             Timer(clientfd,client);
+            LOG_INFO("client(%s) connect",inet_ntoa(client.sin_addr));
             //std::cout << "客户端连接" << clientfd << std::endl;
         }
     }
@@ -146,18 +161,18 @@ bool Webserver::dealWithConn()
     {
         if((clientfd = accept(m_listenfd,(sockaddr*)&client,&len))<0)
         {
-            perror("accept failed");
+            LOG_ERROR("%s:errno is %d","accept failure",errno);
             return false;
         }
         if (HttpConn::s_user_cnt >= MAX_USER_NUM) 
         {
             // 返回错误信息给客户端
             m_utils.show_error(clientfd,"Server busy");
-            //LOG_WARN("Reject connection: too many users");
+            LOG_WARN("Reject connection: too many users");
             return false;
         }
         Timer(clientfd,client);
-
+        LOG_INFO("Timer tick");
         //std::cout << "客户端连接" << clientfd << std::endl;
     }
     return true;
@@ -170,6 +185,11 @@ void Webserver::eventLoop()
     while(!stop_server)
     {
         int event_num = epoll_wait(m_epollfd,m_events,MAX_EVENT_NUM,-1);
+        if(event_num<0&&errno!=EINTR)
+        {
+            LOG_ERROR("epoll failure");
+            break;
+        }
         for(int i=0; i<event_num; i++)
         {
             int fd = m_events[i].data.fd;
@@ -183,7 +203,8 @@ void Webserver::eventLoop()
             }
             else if(m_events[i].data.fd==m_pipefd[0]&& (m_events[i].events&EPOLLIN))
             {
-                dealWithSignal(timeout,stop_server);
+                if(!dealWithSignal(timeout,stop_server))
+                    LOG_ERROR("dealWithSignal failure");
             }
             else if (m_events[i].events & EPOLLIN) //处理客户连接上接收到的数据
             {
@@ -199,6 +220,7 @@ void Webserver::eventLoop()
         {
             m_utils.timer_handler();
 
+            LOG_INFO("timer tick");
             //std::cout << "timer tick" << std::endl;
 
             timeout = 0;
@@ -235,6 +257,7 @@ void Webserver::dealWithRead(int clifd)
 {
     if(m_users[clifd].read_once())
     {
+        LOG_INFO("deal with client(%s)",inet_ntoa(m_users[clifd].addr().sin_addr));
         ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd));
     }
     else
@@ -251,6 +274,7 @@ void Webserver::dealWithWrite(int clifd)
         delTimer(clifd);
         m_users[clifd].closeConn();
     }
+    LOG_INFO("send data to client(%s)",inet_ntoa(m_users[clifd].addr().sin_addr));
     addTimer(clifd);
 }
 
