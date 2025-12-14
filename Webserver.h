@@ -25,10 +25,12 @@ public:
     ~Webserver();
 
     //配置模式初始化
-    void init(unsigned short port,int trigmode,bool log_mode,std::string host,unsigned short sqlport,std::string 
+    void init(unsigned short port,int trigmode,bool log_mode,bool log_close,int thread_num,std::string host,unsigned short sqlport,std::string 
     user,std::string passwd,std::string dbname);
     
     void sqlPool(); //数据库连接池初始化
+
+    void threadPool(); //线程池初始化
 
     void TRIGmode();//触发模式
 
@@ -63,6 +65,8 @@ private:
     unsigned short m_sqlport;
     std::string m_dbname;
     bool m_logmode;
+    bool m_log_close;
+    int m_thread_num;
     int m_lismode;
     int m_climode;
     int m_TRIGmode;

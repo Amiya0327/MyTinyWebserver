@@ -31,8 +31,9 @@ const char* Logger::s_levels[LEVEL_COUNT] = {
     "FATAL"
 };
 
-void Logger::init(bool is_async, int max_size)
+void Logger::init(bool is_async,bool log_close ,int max_size)
 {
+    m_log_close = log_close;
     if(is_async)
     {
         m_queue_max_size = max_size;
@@ -68,6 +69,8 @@ void Logger::close()
 
 bool Logger::log(Level level,const char* file,int line,const char* format,...)
 {
+    if(m_log_close)
+        return true;
     if(level<m_level)
     return false;
     if(!m_fout.is_open())

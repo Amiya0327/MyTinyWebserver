@@ -39,7 +39,7 @@ public:
 
     void level(Level level);
 
-    void init(bool is_async, int max_size = 800);
+    void init(bool is_async,bool log_close = 0, int max_size = 800);
 
     void max_size(int bytes = 1024*1024*1024);
 
@@ -64,6 +64,7 @@ private:
     int m_queue_max_size;
     bool m_is_async;
     bool m_stop;
+    bool m_log_close;
     Level m_level;
     std::string m_filename;
     std::ofstream m_fout;

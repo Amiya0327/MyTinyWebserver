@@ -16,12 +16,14 @@ Webserver::~Webserver()
     delete[] m_users;
 }
 
-void Webserver::init(unsigned short port,int trigmode,bool log_mode,std::string host,unsigned short sqlport,std::string 
+void Webserver::init(unsigned short port,int trigmode,bool log_mode,bool log_close,int thread_num,std::string host,unsigned short sqlport,std::string 
     user,std::string passwd,std::string dbname)
 {
     m_port = port;
     m_TRIGmode = trigmode;
     m_logmode = log_mode;
+    m_log_close = log_close;
+    m_thread_num = thread_num;
     m_sqlport = sqlport;
     m_user = user;
     m_host = host;
@@ -34,6 +36,12 @@ void Webserver::sqlPool()
 {
     ConnPool::get_instance().config(m_user,m_dbname,m_passwd,m_host);
     ConnPool::get_instance().reload();
+}
+
+void Webserver::threadPool()
+{
+    if(m_thread_num)
+        ThreadPool::get_instance().init(m_thread_num);
 }
 
 void Webserver::eventListen()
@@ -93,6 +101,8 @@ void Webserver::eventListen()
     
     m_utils.init(TIMESLOT);
     m_utils.m_manager.m_closeCallback = bind(&Webserver::closeTimeoutConn,this,std::placeholders::_1);
+    //m_utils.m_manager.m_closeCallback = [this](int fd){ closeTimeoutConn(fd);};
+
     Utils::u_epollfd = m_epollfd;
     Utils::u_pipefd = m_pipefd;
 }
@@ -100,7 +110,7 @@ void Webserver::eventListen()
 void Webserver::Log(const std::string& filename)
 {
     Logger::get_instance().open(filename);
-    Logger::get_instance().init(m_logmode);
+    Logger::get_instance().init(m_logmode,m_log_close);
 }
 
 void Webserver::Timer(int fd,sockaddr_in addr)
@@ -260,7 +270,18 @@ void Webserver::dealWithRead(int clifd)
     if(m_users[clifd].read_once())
     {
         LOG_INFO("deal with client(%s)",inet_ntoa(m_users[clifd].addr().sin_addr));
-        ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd));
+        
+        if(!m_thread_num)
+        {
+            if(!m_users[clifd].process())
+            {
+                delTimer(clifd);
+                m_users[clifd].closeConn();
+            }
+        }
+        else
+            ThreadPool::get_instance().addTask(std::bind(&Webserver::excute,this,clifd));
+        //ThreadPool::get_instance().addTask([this,clifd](){ excute(clifd);});
     }
     else
     {

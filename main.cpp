@@ -13,9 +13,11 @@ int main(int argc, char* argv[])
     if(argc>=2)
     port = atoi(argv[1]);
 
-    server.init(port,3,1,host,sqlport,user,passwd,dbname);
+    server.init(port,3,1,1,0,host,sqlport,user,passwd,dbname);
 
     server.sqlPool();
+
+    server.threadPool();
 
     server.TRIGmode();
 
