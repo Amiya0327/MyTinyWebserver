@@ -25,7 +25,7 @@ public:
     ~Webserver();
 
     //配置模式初始化
-    void init(unsigned short port,int trigmode,std::string host,unsigned short sqlport,std::string 
+    void init(unsigned short port,int trigmode,bool log_mode,std::string host,unsigned short sqlport,std::string 
     user,std::string passwd,std::string dbname);
     
     void sqlPool(); //数据库连接池初始化
@@ -62,6 +62,7 @@ private:
     std::string m_passwd;
     unsigned short m_sqlport;
     std::string m_dbname;
+    bool m_logmode;
     int m_lismode;
     int m_climode;
     int m_TRIGmode;
@@ -71,6 +72,5 @@ private:
     int m_pipefd[2];
     epoll_event m_events[MAX_EVENT_NUM];
     HttpConn* m_users;
-    std::mutex* m_fd_mutex;
     Utils m_utils;
 };

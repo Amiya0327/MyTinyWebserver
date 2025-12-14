@@ -2,11 +2,22 @@
 
 Logger::~Logger()
 {
-    close();
+    m_stop = 1;
+
+    if(m_is_async&&m_writer.joinable())
+    {
+        m_consumer.notify_one();
+        m_writer.join();
+    }
+    else
+        close();
 }
 
 Logger::Logger()
 {
+    m_stop = 0;
+    m_queue_max_size = 0;
+    m_is_async = 0;
     m_level = DEBUG;
     m_size = 0;
     m_max = 0;
@@ -19,6 +30,17 @@ const char* Logger::s_levels[LEVEL_COUNT] = {
     "ERROR",
     "FATAL"
 };
+
+void Logger::init(bool is_async, int max_size)
+{
+    if(is_async)
+    {
+        m_queue_max_size = max_size;
+        m_is_async = is_async;
+        m_writer = std::thread(&Logger::writer,this);
+    }
+
+}
 
 Logger& Logger::get_instance()
 {
@@ -77,10 +99,20 @@ bool Logger::log(Level level,const char* file,int line,const char* format,...)
         +message+"\n";
     }
 
+    if(m_is_async)
+    {
+        std::unique_lock<std::mutex> lock(m_queue_mutex);
+        m_producer.wait(lock,[this](){
+            return m_block_queue.size()<m_queue_max_size;
+        });
+        m_block_queue.emplace(s);
+        if(m_block_queue.size()>=m_queue_max_size/2)
+            m_consumer.notify_one();
+    }
+    else
     {
         std::lock_guard<std::mutex> lock(m_write_mutex);
         m_fout << s;
-        m_fout.flush();
     
         m_size += s.size();
         if(m_size>=m_max&&m_max>0)
@@ -89,6 +121,30 @@ bool Logger::log(Level level,const char* file,int line,const char* format,...)
         }
     }
     return true;
+}
+
+void Logger::writer()
+{
+    while(!m_stop)
+    {
+        std::unique_lock<std::mutex> lock(m_queue_mutex);
+        m_consumer.wait(lock,[this](){
+            return !m_block_queue.empty()||m_stop;
+        });
+        while(m_block_queue.size())
+        {
+            m_fout << m_block_queue.front();
+    
+            m_size += m_block_queue.front().size();
+            if(m_size>=m_max&&m_max>0)
+            {
+                rotate();
+            }
+            m_block_queue.pop();
+        }
+        m_producer.notify_all();
+    }
+    close();
 }
 
 void Logger::level(Level level)

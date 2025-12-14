@@ -80,7 +80,7 @@ void ThreadPool::manager()
 
 void ThreadPool::worker()
 {
-    while (m_act)
+    while (1)
     {
         std::function<void()> task = nullptr;
         {

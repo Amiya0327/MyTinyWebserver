@@ -242,7 +242,7 @@ bool HttpConn::add_response(const char *format, ...)
     va_end(args);
 
     //打印日志
-
+    LOG_INFO("response:%s",m_write_buf);
     return true;
 }
 
@@ -467,6 +467,7 @@ HttpConn::HTTP_CODE HttpConn::parse_headers(char *text)
     }
     else
     {
+        LOG_INFO("unknown header:%s",text);
         //错误头，打印日志
     }
     return NO_REQUEST;

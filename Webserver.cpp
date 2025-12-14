@@ -4,23 +4,24 @@
 Webserver::Webserver()
 {
     m_users = new HttpConn[MAX_FD];
-    m_fd_mutex = new std::mutex[MAX_FD];
 }
 
 Webserver::~Webserver()
 {
     close(m_listenfd);
     close(m_epollfd);
+    close(m_pipefd[0]);
+    close(m_pipefd[1]);
     Logger::get_instance().close();
     delete[] m_users;
-    delete[] m_fd_mutex;
 }
 
-void Webserver::init(unsigned short port,int trigmode,std::string host,unsigned short sqlport,std::string 
+void Webserver::init(unsigned short port,int trigmode,bool log_mode,std::string host,unsigned short sqlport,std::string 
     user,std::string passwd,std::string dbname)
 {
     m_port = port;
     m_TRIGmode = trigmode;
+    m_logmode = log_mode;
     m_sqlport = sqlport;
     m_user = user;
     m_host = host;
@@ -99,6 +100,7 @@ void Webserver::eventListen()
 void Webserver::Log(const std::string& filename)
 {
     Logger::get_instance().open(filename);
+    Logger::get_instance().init(m_logmode);
 }
 
 void Webserver::Timer(int fd,sockaddr_in addr)
