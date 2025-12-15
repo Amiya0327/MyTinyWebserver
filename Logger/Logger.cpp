@@ -147,6 +147,7 @@ void Logger::writer()
         }
         m_producer.notify_all();
     }
+    m_fout.flush();
     close();
 }
 

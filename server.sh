@@ -54,19 +54,19 @@ start_servers() {
     echo "启动4个后台进程..."
     
     # 启动并保存PID
-    ./server $PORT1 &  # 这里假设当前目录有server可执行文件
+    ./server -p $PORT1 &  # 这里假设当前目录有server可执行文件
     echo $! > "$PID_DIR/server_$PORT1.pid"
     echo "启动进程1: 端口 $PORT1, PID: $!"
     
-    ./server $PORT2 &
+    ./server -p $PORT2 &
     echo $! > "$PID_DIR/server_$PORT2.pid"
     echo "启动进程2: 端口 $PORT2, PID: $!"
     
-    ./server $PORT3 &
+    ./server -p $PORT3 &
     echo $! > "$PID_DIR/server_$PORT3.pid"
     echo "启动进程3: 端口 $PORT3, PID: $!"
     
-    ./server $PORT4 &
+    ./server -p $PORT4 &
     echo $! > "$PID_DIR/server_$PORT4.pid"
     echo "启动进程4: 端口 $PORT4, PID: $!"
     

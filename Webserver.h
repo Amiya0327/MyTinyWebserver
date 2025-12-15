@@ -15,7 +15,7 @@
 const int MAX_EVENT_NUM = 10000; //最大事件数
 const int MAX_FD = 65536; //最大客户连接数
 const int MAX_USER_NUM = 10000;
-const int TIMESLOT = 1;
+const int TIMESLOT = 3;
 
 class Webserver
 {

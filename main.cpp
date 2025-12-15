@@ -1,6 +1,5 @@
 #include "Webserver.h"
-
-unsigned short port = 9006;
+#include "Config.h"
 
 int main(int argc, char* argv[])
 {
@@ -9,11 +8,14 @@ int main(int argc, char* argv[])
     std::string user = "yzl";
     std::string passwd = "qw123456";
     std::string dbname = "webserver";
-    Webserver server;
-    if(argc>=2)
-    port = atoi(argv[1]);
 
-    server.init(port,3,1,1,0,host,sqlport,user,passwd,dbname);
+    Config config;
+    config.parse_arg(argc,argv);
+    Webserver server;
+
+    server.init(config.m_port,config.m_trig_mode,config.m_log_mode,
+        config.m_log_close,config.m_thread_num,
+        host,sqlport,user,passwd,dbname);
 
     server.sqlPool();
 

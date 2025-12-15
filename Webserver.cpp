@@ -125,7 +125,7 @@ void Webserver::addTimer(int fd)
 {
     time_t cur = time(0);
     Util_timer timer;
-    timer.m_expire = cur+30*TIMESLOT;
+    timer.m_expire = cur+5*TIMESLOT;
     timer.m_fd = fd;
     m_utils.m_manager.addTimer(timer);
     LOG_INFO("adjust timer once");
