@@ -37,6 +37,8 @@ private:
     int m_thread_num;
     bool m_act; //线程开关
     std::queue<std::function<void()>> m_tasks; //任务队列
+
+    //队列锁
     std::mutex m_mtx;
     std::condition_variable m_cv;
 };

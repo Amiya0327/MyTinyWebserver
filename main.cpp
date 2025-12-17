@@ -10,24 +10,24 @@ int main(int argc, char* argv[])
     std::string dbname = "webserver";
 
     Config config;
-    config.parse_arg(argc,argv);
+    config.parse_arg(argc,argv); //解析命令行参数
     Webserver server;
 
     server.init(config.m_port,config.m_trig_mode,config.m_log_mode,
         config.m_log_close,config.m_thread_num,
-        host,sqlport,user,passwd,dbname);
+        host,sqlport,user,passwd,dbname); //初始化
 
-    server.sqlPool();
+    server.sqlPool(); //数据库连接池
 
-    server.threadPool();
+    server.threadPool(); //线程池
 
-    server.TRIGmode();
+    server.TRIGmode(); //触发模式
 
-    server.Log("Server.log");
+    server.Log("Server.log"); //日志
 
-    server.eventListen();
-    
-    server.eventLoop();
+    server.eventListen(); //监听
+     
+    server.eventLoop(); //主循环
 
     return 0;
 }

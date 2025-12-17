@@ -77,59 +77,62 @@ public:
     void init(int fd,const sockaddr_in& addr,int trigmode);
     //请求完成时初始化缓冲区等数据
     void init();
-    bool read_once();
-    bool process();
-    bool write();
-    void unmap();
+    bool read_once(); //读取缓冲区数据
+    bool process(); //解析http
+    bool write(); //发送响应报文
+    void unmap(); //关闭文件映射
 
-    HTTP_CODE process_read();
-    bool process_write(HTTP_CODE ret);
-    HTTP_CODE parse_request_line(char *text);
-    HTTP_CODE parse_headers(char *text);
-    HTTP_CODE parse_content(char *text);
-    HTTP_CODE do_request();
-    char *get_line();
-    LINE_STATUS parse_line();
+    HTTP_CODE process_read(); //解析读缓冲区数据
+    bool process_write(HTTP_CODE ret); //生成报文到读缓冲区
+    HTTP_CODE parse_request_line(char *text); //解析请求行
+    HTTP_CODE parse_headers(char *text); //解析头
+    HTTP_CODE parse_content(char *text); //解析内容
+    HTTP_CODE do_request(); //根据请求预处理响应报文
+    LINE_STATUS parse_line(); //解析一行数据
+    char *get_line(); //从读缓冲区读取一行数据
 
     void closeConn();
-    bool add_response(const char *format, ...);
-    bool add_content(const char *content);
-    bool add_status_line(int status, const char *title);
-    bool add_headers(int content_length);
-    bool add_content_type();
-    bool add_content_length(int content_length);
-    bool add_linger();
-    bool add_blank_line();
-    int fd();
+    bool add_response(const char *format, ...);  //统一往写缓冲区添加信息
+    bool add_content(const char *content); //添加内容
+    bool add_status_line(int status, const char *title); //添加响应状态
+    bool add_headers(int content_length); //添加响应头
+    bool add_content_type(); //添加内容类型
+    bool add_content_length(int content_length); //内容长度
+    bool add_linger(); //是否持久连接
+    bool add_blank_line(); //结束的空行
+    int fd(); 
     sockaddr_in addr();
 
     static int s_epollfd;
-    static std::atomic<int> s_user_cnt;
+    static std::atomic<int> s_user_cnt; //多线程下访问，需要原子变量，
 private:
-    char m_read_buf[READ_BUFFER_SIZE];
-    char m_write_buf[WRITE_BUFFER_SIZE];
-    struct iovec m_iv[2];
+    char m_read_buf[READ_BUFFER_SIZE]; //读缓冲区
+    char m_write_buf[WRITE_BUFFER_SIZE]; //写缓冲区
+
+    struct iovec m_iv[2]; //读写向量，用于批量发送数据，优化性能
     int m_iv_cnt;
+
     int m_bytes_to_send;
     int m_bytes_have_send;
     int m_clifd;
     sockaddr_in m_addr;
-    int m_read_idx;
-    int m_write_idx;
-    int m_checked_idx;
-    int m_start_line;
-    int m_TRIGmode;
-    char* m_url;
+    int m_read_idx; //读缓冲区内容大小
+    int m_write_idx; //写缓冲区内容大小
+    int m_checked_idx; //已经解析内容，当前解析位置
+    int m_start_line; //读取一行的开始位置
+    int m_TRIGmode; //触发模式
+    char* m_url; //资源
     char* m_host;
     long long m_content_length;
     bool m_linger;  //保活连接
     char* m_string; //存储请求头数据
-    char m_real_file[FILENAME_LEN];
-    struct stat m_file_stat;
+    char m_real_file[FILENAME_LEN]; //真实文件位置
+    struct stat m_file_stat; //文件状态
     char* m_file_addr;
 
+    //解析状态
     METHOD m_method;
-    char* m_version;
+    char* m_version;  //http版本
     int cgi;  //判断是否启用post
-    CHECK_STATE m_check_state;
+    CHECK_STATE m_check_state; 
 };

@@ -7,7 +7,7 @@ public:
 
     Config();
 
-    void parse_arg(int argc,char* argv[]);
+    void parse_arg(int argc,char* argv[]); //命令行参数解析
 
     int m_port;
     int m_trig_mode;

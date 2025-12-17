@@ -12,6 +12,7 @@
 #include<functional>
 
 
+//定时器节点
 class Util_timer
 {
 public:
@@ -32,13 +33,13 @@ class TimerManager
 public:
     TimerManager();
     ~TimerManager();
-    void addTimer(Util_timer);
-    void delTimer(int );
-    void tick();
+    void addTimer(Util_timer); //调整定时器
+    void delTimer(int ); //删除定时器
+    void tick(); //闹钟触发处理
     std::function<void(int)> m_closeCallback;
 private:
-    std::priority_queue<Util_timer,std::vector<Util_timer>,TimerCompare> m_timer_pq;
-    std::unordered_map<int,time_t> m_cur_expire;
+    std::priority_queue<Util_timer,std::vector<Util_timer>,TimerCompare> m_timer_pq; //优先队列存储定时器
+    std::unordered_map<int,time_t> m_cur_expire; //每个连接的最新超时时间
 };
 
 class Utils
@@ -57,19 +58,23 @@ public:
     //将内核事件表注册读事件
     void addfd(int epollfd, int fd, bool one_shot,bool TRIGmode);
 
+    //移除fd
     void removefd(int epollfd,int fd);
 
     void modfd(int epollfd, int fd, int ev,bool TRIGmode); //重设oneshot
 
+    //信号函数修改
     void addsig(int signal,void handle(int),bool restart);
 
+    //处理超时定时器
     void timer_handler();
 
     void init(int timeslot); 
 
+    //闹钟触发调用函数
     static void sig_handler(int sig);
     
-    static int* u_pipefd;
+    static int* u_pipefd; //socketpair创建的fd
     static int u_epollfd;
     TimerManager m_manager;
 

@@ -34,7 +34,7 @@ const char* Logger::s_levels[LEVEL_COUNT] = {
 void Logger::init(bool is_async,bool log_close ,int max_size)
 {
     m_log_close = log_close;
-    if(is_async)
+    if(is_async&&!m_log_close)
     {
         m_queue_max_size = max_size;
         m_is_async = is_async;
@@ -67,6 +67,7 @@ void Logger::close()
     m_fout.close();
 }
 
+//日志打印格式[time] [level] [file:line] infomation
 bool Logger::log(Level level,const char* file,int line,const char* format,...)
 {
     if(m_log_close)

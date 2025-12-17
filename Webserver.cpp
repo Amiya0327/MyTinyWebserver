@@ -69,17 +69,19 @@ void Webserver::eventListen()
         exit(-1);
     }
 
-    if(listen(m_listenfd,512)<0)
+    if(listen(m_listenfd,512)<0) //监听队列大小适中，过小容易导致长尾延迟
     {
         LOG_ERROR("listen failure");
         exit(-1);
     }
+
     m_epollfd = epoll_create(1);
     if(m_epollfd==-1)
     {
         LOG_ERROR("epoll_create failure");
         exit(-1);
     }
+
     HttpConn::s_epollfd = m_epollfd;
     m_utils.addfd(m_epollfd,m_listenfd,0,m_lismode);
     //std::cout << "服务器监听端口" << m_port << std::endl;
@@ -117,7 +119,6 @@ void Webserver::Timer(int fd,sockaddr_in addr)
 {
     m_users[fd].init(fd,addr,m_climode);
     HttpConn::s_user_cnt++;
-
     addTimer(fd);
 }
 
@@ -142,7 +143,7 @@ bool Webserver::dealWithConn()
     sockaddr_in client;
     socklen_t len = sizeof(client);
     int clientfd;
-    if(m_lismode)
+    if(m_lismode) //ET
     {
         while(1)
         {
@@ -169,7 +170,7 @@ bool Webserver::dealWithConn()
             //std::cout << "客户端连接" << clientfd << std::endl;
         }
     }
-    else
+    else //LT
     {
         if((clientfd = accept(m_listenfd,(sockaddr*)&client,&len))<0)
         {
@@ -267,13 +268,13 @@ void Webserver::TRIGmode()
 
 void Webserver::dealWithRead(int clifd)
 {
-    if(m_users[clifd].read_once())
+    if(m_users[clifd].read_once()) //每次读取一个请求的报文
     {
         LOG_INFO("deal with client(%s)",inet_ntoa(m_users[clifd].addr().sin_addr));
         
         if(!m_thread_num)
         {
-            if(!m_users[clifd].process())
+            if(!m_users[clifd].process())  //解析http
             {
                 delTimer(clifd);
                 m_users[clifd].closeConn();
@@ -285,6 +286,7 @@ void Webserver::dealWithRead(int clifd)
     }
     else
     {
+        //失败关闭连接
         delTimer(clifd);
         m_users[clifd].closeConn();
     }
@@ -292,13 +294,13 @@ void Webserver::dealWithRead(int clifd)
 
 void Webserver::dealWithWrite(int clifd)
 {
-    if(!m_users[clifd].write())
+    if(!m_users[clifd].write()) //发送响应报文
     {
         delTimer(clifd);
         m_users[clifd].closeConn();
     }
     LOG_INFO("send data to client(%s)",inet_ntoa(m_users[clifd].addr().sin_addr));
-    addTimer(clifd);
+    addTimer(clifd); //一个业务完成时更新定时器
 }
 
 void Webserver::dealWithClose(int clifd)
@@ -307,6 +309,7 @@ void Webserver::dealWithClose(int clifd)
     m_users[clifd].closeConn();
 }
 
+//业务函数，交给线程池处理
 void Webserver::excute(int fd)
 {
     if(!m_users[fd].process())

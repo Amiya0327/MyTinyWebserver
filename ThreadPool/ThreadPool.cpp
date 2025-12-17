@@ -3,7 +3,7 @@
 ThreadPool::ThreadPool()
 {
     m_thread_num = 0;
-    m_act = 1;
+    m_act = true;
 }
 
 void ThreadPool::init(int thread_num)
