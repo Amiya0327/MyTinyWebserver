@@ -16,7 +16,7 @@ Config::Config()
 void Config::parse_arg(int argc,char* argv[])
 {
     int opt;
-    const char* str = "p:m:l:c:t";
+    const char* str = "p:m:l:c:t:";
 
     while((opt = getopt(argc,argv,str))!=-1)
     {

@@ -421,7 +421,11 @@ HttpConn::HTTP_CODE HttpConn::parse_request_line(char* text)
     m_version++;
 
     m_version += strspn(m_version," \t"); //跳过空白字符，指向版本信息的第一个字符
-    if(strcasecmp(m_version,"HTTP/1.1")&&strcasecmp(m_version,"HTTP/1.0"))
+    if(strcasecmp(m_version,"HTTP/1.1")==0)
+        m_linger = 1;
+    else if(strcasecmp(m_version,"HTTP/1.0")==0)
+        m_linger = 0;
+    else
         return BAD_REQUEST;
 
     //跳过多余信息
@@ -468,6 +472,10 @@ HttpConn::HTTP_CODE HttpConn::parse_headers(char *text)
         if(strcasecmp(text,"keep-alive")==0) //持久连接
         {
             m_linger = true;
+        }
+        else 
+        {
+            m_linger = false;
         }
     }
     else if(strncasecmp(text,"Content-length:",15)==0)
